@@ -7,6 +7,7 @@ import logging
 from config import (
     SEARCH_TERMS_SAM, SEARCH_TERMS_GRANTS, SEARCH_TERMS_NEWS,
     NEGATIVE_TITLE_KEYWORDS, POSITIVE_KEYWORDS,
+)
 
 
 logger = logging.getLogger(__name__)
