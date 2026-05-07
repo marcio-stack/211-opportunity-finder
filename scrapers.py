@@ -127,8 +127,9 @@ def search_sam_gov(api_key, keywords=None):
             posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
             params = {
                 'api_key': api_key,
-                'keywords': term,
+                'title': term,
                 'postedFrom': posted_from,
+                                'postedTo': datetime.now().strftime('%m/%d/%Y')
                 'limit': 25,
                 'offset': 0,
             }
