@@ -106,12 +106,8 @@ def classify_lead_type(title, description='', source=''):
 
 
 def search_sam_gov_raw_test(api_key, test_term='call center'):
-    """Comprehensive SAM.gov API diagnostic \u2014 tests multiple URL variants."""
+    """Make a single raw SAM.gov API call and return full debug info."""
     from datetime import datetime, timedelta
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)',
-        'Accept': 'application/json',
-    }
     result = {
         'api_key_present': bool(api_key),
         'api_key_length': len(api_key) if api_key else 0,
@@ -123,88 +119,50 @@ def search_sam_gov_raw_test(api_key, test_term='call center'):
         result['error'] = 'No SAM_API_KEY environment variable set'
         return result
 
-    posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
-    posted_to = datetime.now().strftime('%m/%d/%Y')
-    result['date_range'] = f"{posted_from} to {posted_to}"
-
-    # Test 1: Connectivity \u2014 can we reach api.sam.gov at all?
     try:
-        ping = requests.get("https://api.sam.gov/", timeout=10, headers=headers)
-        result['connectivity'] = {
-            'status_code': ping.status_code,
-            'response_length': len(ping.text),
-            'reachable': True,
-        }
-    except Exception as e:
-        result['connectivity'] = {'reachable': False, 'error': str(e)}
-
-    # Test 2: URL with /prod/ prefix
-    try:
-        url1 = "https://api.sam.gov/prod/opportunities/v2/search"
+        url = "https://api.sam.gov/opportunities/v2/search"
+        posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
+        posted_to = datetime.now().strftime('%m/%d/%Y')
         params = {
             'api_key': api_key,
             'postedFrom': posted_from,
             'postedTo': posted_to,
-            'limit': 5,
+            'limit': 10,
             'offset': 0,
         }
-        resp1 = requests.get(url1, params=params, timeout=30, headers=headers)
-        result['with_prod'] = {
-            'url': url1,
-            'status_code': resp1.status_code,
-            'response_length': len(resp1.text),
-            'response_headers': dict(resp1.headers),
-            'response_preview': resp1.text[:500],
+        # First test: NO title filter (should return ANY recent opportunities)
+        resp = requests.get(url, params=params, timeout=30)
+        result['no_filter_test'] = {
+            'status_code': resp.status_code,
+            'response_length': len(resp.text),
+            'response_preview': resp.text[:500],
         }
-        if resp1.status_code == 200:
-            data = resp1.json()
-            result['with_prod']['total_records'] = data.get('totalRecords', 0)
-            result['with_prod']['num_results'] = len(data.get('opportunitiesData', []))
-    except Exception as e:
-        result['with_prod'] = {'url': url1, 'error': str(e)}
+        if resp.status_code == 200:
+            data = resp.json()
+            opps = data.get('opportunitiesData', [])
+            result['no_filter_test']['total_records'] = data.get('totalRecords', 0)
+            result['no_filter_test']['num_results'] = len(opps)
+            if opps:
+                result['no_filter_test']['first_title'] = opps[0].get('title', '')
 
-    # Test 3: URL without /prod/ prefix
-    try:
-        url2 = "https://api.sam.gov/opportunities/v2/search"
-        resp2 = requests.get(url2, params=params, timeout=30, headers=headers)
-        result['without_prod'] = {
-            'url': url2,
+        # Second test: WITH title filter
+        params['title'] = test_term
+        resp2 = requests.get(url, params=params, timeout=30)
+        result['title_filter_test'] = {
             'status_code': resp2.status_code,
             'response_length': len(resp2.text),
-            'response_headers': dict(resp2.headers),
             'response_preview': resp2.text[:500],
         }
         if resp2.status_code == 200:
-            data = resp2.json()
-            result['without_prod']['total_records'] = data.get('totalRecords', 0)
-            result['without_prod']['num_results'] = len(data.get('opportunitiesData', []))
-    except Exception as e:
-        result['without_prod'] = {'url': url2, 'error': str(e)}
+            data2 = resp2.json()
+            opps2 = data2.get('opportunitiesData', [])
+            result['title_filter_test']['total_records'] = data2.get('totalRecords', 0)
+            result['title_filter_test']['num_results'] = len(opps2)
+            if opps2:
+                result['title_filter_test']['first_title'] = opps2[0].get('title', '')
 
-    # Test 4: API key in header instead of query param
-    try:
-        url3 = "https://api.sam.gov/prod/opportunities/v2/search"
-        params_no_key = {
-            'postedFrom': posted_from,
-            'postedTo': posted_to,
-            'limit': 5,
-            'offset': 0,
-        }
-        headers_with_key = {**headers, 'X-Api-Key': api_key}
-        resp3 = requests.get(url3, params=params_no_key, timeout=30, headers=headers_with_key)
-        result['header_auth'] = {
-            'url': url3,
-            'method': 'X-Api-Key header',
-            'status_code': resp3.status_code,
-            'response_length': len(resp3.text),
-            'response_preview': resp3.text[:500],
-        }
-        if resp3.status_code == 200:
-            data = resp3.json()
-            result['header_auth']['total_records'] = data.get('totalRecords', 0)
-            result['header_auth']['num_results'] = len(data.get('opportunitiesData', []))
     except Exception as e:
-        result['header_auth'] = {'error': str(e)}
+        result['error'] = str(e)
 
     return result
 
@@ -222,15 +180,11 @@ def search_sam_gov(api_key, keywords=None):
     search_terms = keywords or SEARCH_TERMS_SAM
     errors = []
     raw_count = 0
-    sam_headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)',
-        'Accept': 'application/json',
-    }
 
     for term in search_terms:
         try:
             # SAM.gov API v2 \u2014 requires both date params
-            url = "https://api.sam.gov/prod/opportunities/v2/search"
+            url = "https://api.sam.gov/opportunities/v2/search"
             posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
             posted_to = datetime.now().strftime('%m/%d/%Y')
             params = {
@@ -242,7 +196,7 @@ def search_sam_gov(api_key, keywords=None):
                 'offset': 0,
             }
             logger.info(f"SAM.gov searching: title='{term}' from={posted_from} to={posted_to}")
-            resp = requests.get(url, params=params, timeout=30, headers=sam_headers)
+            resp = requests.get(url, params=params, timeout=30)
             logger.info(f"SAM.gov response for '{term}': status={resp.status_code}, length={len(resp.text)}")
             if resp.status_code != 200:
                 logger.error(f"SAM.gov FULL RESPONSE for '{term}': {resp.text[:1000]}")
@@ -296,7 +250,7 @@ def search_sam_gov(api_key, keywords=None):
         broad_terms = ['call center', 'contact center', 'hotline', 'helpline', 'customer service']
         for term in broad_terms:
             try:
-                url = "https://api.sam.gov/prod/opportunities/v2/search"
+                url = "https://api.sam.gov/opportunities/v2/search"
                 posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
                 posted_to = datetime.now().strftime('%m/%d/%Y')
                 params = {
@@ -308,7 +262,7 @@ def search_sam_gov(api_key, keywords=None):
                     'offset': 0,
                 }
                 logger.info(f"SAM.gov BROAD keyword search: '{term}'")
-                resp = requests.get(url, params=params, timeout=30, headers=sam_headers)
+                resp = requests.get(url, params=params, timeout=30)
                 logger.info(f"SAM.gov broad '{term}': status={resp.status_code}, length={len(resp.text)}")
 
                 if resp.status_code == 200:
