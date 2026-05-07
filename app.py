@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_apscheduler import APScheduler
 from models import db, Organization, Opportunity, SearchLog
-from scrapers import run_all_scrapers
+from scrapers import run_all_scrapers, get_diagnostics
 from analyzer import analyze_opportunity
 from seed_data import seed_organizations
 from config import Config
@@ -220,6 +220,25 @@ def trigger_scan():
     """Manually trigger a full scan."""
     run_scheduled_scan()
     return jsonify({'success': True, 'message': 'Scan completed'})
+
+
+@app.route('/api/diagnostics')
+def api_diagnostics():
+    """Show scraper diagnostics for debugging."""
+    diag = get_diagnostics()
+    diag['sam_api_key_configured'] = bool(app.config.get('SAM_API_KEY', ''))
+    diag['sam_api_key_length'] = len(app.config.get('SAM_API_KEY', ''))
+    diag['anthropic_key_configured'] = bool(app.config.get('ANTHROPIC_API_KEY', ''))
+
+    last_scan = SearchLog.query.order_by(SearchLog.ran_at.desc()).first()
+    diag['last_scan'] = {
+        'ran_at': last_scan.ran_at.isoformat() if last_scan else None,
+        'status': last_scan.status if last_scan else None,
+        'results_found': last_scan.results_found if last_scan else 0,
+        'new_opportunities': last_scan.new_opportunities if last_scan else 0,
+        'error': last_scan.error if last_scan and hasattr(last_scan, 'error') else None,
+    }
+    return jsonify(diag)
 
 
 with app.app_context():
