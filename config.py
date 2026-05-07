@@ -12,17 +12,17 @@ class Config:
     SCHEDULER_API_ENABLED = True
 
 # Focused search terms for 211 procurement / lead gen
+# NARROWED: Only 211-specific terms to avoid HVAC, IT, and other irrelevant RFPs
 SEARCH_TERMS_SAM = [
-    '211',
-    'call center services',
-    'contact center services',
-    'information and referral',
-    'crisis hotline',
-    'helpline services',
-    'BPO services',
-    'customer service center',
-    'call center staffing',
-    'overflow call center',
+    '211 services',
+    '211 call center',
+    '211 hotline',
+    '211 contact center',
+    '2-1-1 services',
+    'information and referral services',
+    'crisis hotline services',
+    'community helpline',
+    'human services hotline',
 ]
 
 SEARCH_TERMS_GRANTS = [
@@ -46,14 +46,40 @@ SEARCH_TERMS_NEWS = [
 
 # Keywords that indicate FALSE POSITIVES (not about 211 services)
 NEGATIVE_TITLE_KEYWORDS = [
+    # Roads / infrastructure
     'highway', 'road', 'widening', 'paving', 'bridge', 'route 211',
     'sr 211', 'sr-211', 'state route', 'interstate',
+    # Military / defense
     'military', 'space command', 'missile', 'defense', 'navy', 'army',
     'air force', 'devSecOps', 'weapons', 'ammunition',
+    # Construction / real estate
     'construction', 'renovation', 'building', 'real estate',
+    # Guam false positive
     'guam', 'communications center on guam',
+    # Facilities / maintenance
     'janitorial', 'landscaping', 'food service', 'custodial',
     'sewer', 'water treatment', 'electrical grid',
+    # HVAC / mechanical / trades
+    'hvac', 'plumbing', 'heating', 'cooling', 'air conditioning',
+    'mechanical', 'electrical contractor', 'roofing', 'painting',
+    'carpentry', 'welding', 'boiler', 'furnace', 'ductwork',
+    # Medical / pharma / lab
+    'medical equipment', 'pharmaceutical', 'laboratory', 'surgical',
+    'radiology', 'dental', 'prosthetics', 'biomedical',
+    # IT / software / cyber
+    'IT services', 'software development', 'cybersecurity', 'cloud services',
+    'network infrastructure', 'data center', 'server',
+    # Telecom (non-211)
+    'telecommunications', 'fiber optic', 'broadband', 'cellular tower',
+    # Fleet / vehicles
+    'fleet', 'vehicle maintenance', 'automotive', 'tire', 'fuel',
+    # Waste / sanitation
+    'trash', 'waste management', 'recycling', 'hazardous waste', 'debris',
+    # Security (physical)
+    'security guard', 'patrol', 'surveillance', 'alarm system',
+    # Other irrelevant
+    'uniforms', 'laundry', 'pest control', 'elevator', 'generator',
+    'fire suppression', 'sprinkler', 'asbestos', 'lead abatement',
 ]
 
 # Keywords that indicate TRUE POSITIVES (actually about 211/call center services)
