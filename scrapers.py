@@ -9,7 +9,6 @@ from config import (
     NEGATIVE_TITLE_KEYWORDS, POSITIVE_KEYWORDS,
 )
 
-
 logger = logging.getLogger(__name__)
 
 # Track scraper diagnostics for the /api/diagnostics endpoint
@@ -106,13 +105,75 @@ def classify_lead_type(title, description='', source=''):
     return 'market_signal'
 
 
+def search_sam_gov_raw_test(api_key, test_term='call center'):
+    """Make a single raw SAM.gov API call and return full debug info."""
+    from datetime import datetime, timedelta
+    result = {
+        'api_key_present': bool(api_key),
+        'api_key_length': len(api_key) if api_key else 0,
+        'api_key_preview': (api_key[:4] + '...' + api_key[-4:]) if api_key and len(api_key) > 8 else 'too_short',
+        'test_term': test_term,
+    }
+
+    if not api_key:
+        result['error'] = 'No SAM_API_KEY environment variable set'
+        return result
+
+    try:
+        url = "https://api.sam.gov/prod/opportunities/v2/search"
+        posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
+        posted_to = datetime.now().strftime('%m/%d/%Y')
+        params = {
+            'api_key': api_key,
+            'postedFrom': posted_from,
+            'postedTo': posted_to,
+            'limit': 10,
+            'offset': 0,
+        }
+        # First test: NO title filter (should return ANY recent opportunities)
+        resp = requests.get(url, params=params, timeout=30)
+        result['no_filter_test'] = {
+            'status_code': resp.status_code,
+            'response_length': len(resp.text),
+            'response_preview': resp.text[:500],
+        }
+        if resp.status_code == 200:
+            data = resp.json()
+            opps = data.get('opportunitiesData', [])
+            result['no_filter_test']['total_records'] = data.get('totalRecords', 0)
+            result['no_filter_test']['num_results'] = len(opps)
+            if opps:
+                result['no_filter_test']['first_title'] = opps[0].get('title', '')
+
+        # Second test: WITH title filter
+        params['title'] = test_term
+        resp2 = requests.get(url, params=params, timeout=30)
+        result['title_filter_test'] = {
+            'status_code': resp2.status_code,
+            'response_length': len(resp2.text),
+            'response_preview': resp2.text[:500],
+        }
+        if resp2.status_code == 200:
+            data2 = resp2.json()
+            opps2 = data2.get('opportunitiesData', [])
+            result['title_filter_test']['total_records'] = data2.get('totalRecords', 0)
+            result['title_filter_test']['num_results'] = len(opps2)
+            if opps2:
+                result['title_filter_test']['first_title'] = opps2[0].get('title', '')
+
+    except Exception as e:
+        result['error'] = str(e)
+
+    return result
+
+
 def search_sam_gov(api_key, keywords=None):
     """Search SAM.gov for 211-related procurement opportunities."""
     global _last_diagnostics
 
     if not api_key:
         _last_diagnostics['sam_gov'] = {'status': 'skipped', 'detail': 'No API key configured'}
-        logger.warning("No SAM.gov API key configured — skipping SAM.gov")
+        logger.warning("No SAM.gov API key configured \u2014 skipping SAM.gov")
         return []
 
     results = []
@@ -122,21 +183,23 @@ def search_sam_gov(api_key, keywords=None):
 
     for term in search_terms:
         try:
-            # SAM.gov API v2
+            # SAM.gov API v2 \u2014 MUST use /prod/ prefix and both date params
             url = "https://api.sam.gov/prod/opportunities/v2/search"
-            # Search last 90 days for more results
             posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
+            posted_to = datetime.now().strftime('%m/%d/%Y')
             params = {
                 'api_key': api_key,
                 'title': term,
                 'postedFrom': posted_from,
-                                'postedTo': datetime.now().strftime('%m/%d/%Y'),
+                'postedTo': posted_to,
                 'limit': 25,
                 'offset': 0,
             }
-            logger.info(f"SAM.gov searching: '{term}' from {posted_from}")
+            logger.info(f"SAM.gov searching: title='{term}' from={posted_from} to={posted_to}")
             resp = requests.get(url, params=params, timeout=30)
-            logger.info(f"SAM.gov response for '{term}': status={resp.status_code}")
+            logger.info(f"SAM.gov response for '{term}': status={resp.status_code}, length={len(resp.text)}")
+            if resp.status_code != 200:
+                logger.error(f"SAM.gov FULL RESPONSE for '{term}': {resp.text[:1000]}")
 
             if resp.status_code == 200:
                 data = resp.json()
@@ -180,6 +243,66 @@ def search_sam_gov(api_key, keywords=None):
         if r['title'] not in seen:
             seen.add(r['title'])
             unique.append(r)
+
+    # FALLBACK: If title search found nothing, try broader keyword-based search
+    if raw_count == 0:
+        logger.warning("SAM.gov title search returned 0 results \u2014 trying broader keyword search")
+        broad_terms = ['call center', 'contact center', 'hotline', 'helpline', 'customer service']
+        for term in broad_terms:
+            try:
+                url = "https://api.sam.gov/prod/opportunities/v2/search"
+                posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
+                posted_to = datetime.now().strftime('%m/%d/%Y')
+                params = {
+                    'api_key': api_key,
+                    'keyword': term,
+                    'postedFrom': posted_from,
+                    'postedTo': posted_to,
+                    'limit': 25,
+                    'offset': 0,
+                }
+                logger.info(f"SAM.gov BROAD keyword search: '{term}'")
+                resp = requests.get(url, params=params, timeout=30)
+                logger.info(f"SAM.gov broad '{term}': status={resp.status_code}, length={len(resp.text)}")
+
+                if resp.status_code == 200:
+                    data = resp.json()
+                    opps = data.get('opportunitiesData', [])
+                    raw_count += len(opps)
+                    logger.info(f"SAM.gov broad '{term}': {len(opps)} raw results")
+
+                    for opp in opps:
+                        title = opp.get('title', '')
+                        desc = opp.get('description', '') or ''
+                        desc = desc[:2000]
+
+                        if is_false_positive(title):
+                            continue
+
+                        results.append({
+                            'title': title,
+                            'source': 'SAM.gov',
+                            'source_url': f"https://sam.gov/opp/{opp.get('noticeId', '')}/view",
+                            'state': opp.get('placeOfPerformance', {}).get('state', {}).get('code', '') if isinstance(opp.get('placeOfPerformance'), dict) else '',
+                            'opportunity_type': classify_lead_type(title, desc, 'SAM.gov'),
+                            'description': desc,
+                            'deadline': opp.get('responseDeadLine', ''),
+                            'contact_info': json.dumps(opp.get('pointOfContact', [])),
+                            'discovered_at': datetime.utcnow(),
+                        })
+                else:
+                    logger.error(f"SAM.gov broad error for '{term}': HTTP {resp.status_code} - {resp.text[:500]}")
+
+            except Exception as e:
+                logger.error(f"SAM.gov broad search error for '{term}': {e}")
+
+        # Re-deduplicate after broad search
+        seen = set()
+        unique = []
+        for r in results:
+            if r['title'] not in seen:
+                seen.add(r['title'])
+                unique.append(r)
 
     _last_diagnostics['sam_gov'] = {
         'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
