@@ -120,7 +120,7 @@ def search_sam_gov_raw_test(api_key, test_term='call center'):
         return result
 
     try:
-        url = "https://api.sam.gov/opportunities/v2/search"
+        url = "https://api.sam.gov/prod/opportunities/v2/search"
         posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
         posted_to = datetime.now().strftime('%m/%d/%Y')
         params = {
@@ -184,7 +184,7 @@ def search_sam_gov(api_key, keywords=None):
     for term in search_terms:
         try:
             # SAM.gov API v2 \u2014 requires both date params
-            url = "https://api.sam.gov/opportunities/v2/search"
+            url = "https://api.sam.gov/prod/opportunities/v2/search"
             posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
             posted_to = datetime.now().strftime('%m/%d/%Y')
             params = {
@@ -250,7 +250,7 @@ def search_sam_gov(api_key, keywords=None):
         broad_terms = ['call center', 'contact center', 'hotline', 'helpline', 'customer service']
         for term in broad_terms:
             try:
-                url = "https://api.sam.gov/opportunities/v2/search"
+                url = "https://api.sam.gov/prod/opportunities/v2/search"
                 posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
                 posted_to = datetime.now().strftime('%m/%d/%Y')
                 params = {
