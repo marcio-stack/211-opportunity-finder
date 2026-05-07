@@ -7,7 +7,7 @@ import logging
 from config import (
     SEARCH_TERMS_SAM, SEARCH_TERMS_GRANTS, SEARCH_TERMS_NEWS,
     NEGATIVE_TITLE_KEYWORDS, POSITIVE_KEYWORDS,
-)
+
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +129,7 @@ def search_sam_gov(api_key, keywords=None):
                 'api_key': api_key,
                 'title': term,
                 'postedFrom': posted_from,
-                                'postedTo': datetime.now().strftime('%m/%d/%Y')
+                                'postedTo': datetime.now().strftime('%m/%d/%Y'),
                 'limit': 25,
                 'offset': 0,
             }
