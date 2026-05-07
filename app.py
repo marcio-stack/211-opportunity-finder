@@ -3,7 +3,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_apscheduler import APScheduler
 from models import db, Organization, Opportunity, SearchLog
-from scrapers import run_all_scrapers, get_diagnostics
+from scrapers import run_all_scrapers, get_diagnostics, search_sam_gov_raw_test
 from analyzer import analyze_opportunity
 from seed_data import seed_organizations
 from config import Config
@@ -220,6 +220,15 @@ def trigger_scan():
     """Manually trigger a full scan."""
     run_scheduled_scan()
     return jsonify({'success': True, 'message': 'Scan completed'})
+
+
+@app.route('/api/test-sam')
+def test_sam_api():
+    """Direct SAM.gov API test \u2014 shows raw response for debugging."""
+    api_key = app.config.get('SAM_API_KEY', '')
+    test_term = request.args.get('q', 'call center')
+    result = search_sam_gov_raw_test(api_key, test_term)
+    return jsonify(result)
 
 
 @app.route('/api/diagnostics')
