@@ -122,7 +122,7 @@ def search_sam_gov(api_key, keywords=None):
     for term in search_terms:
         try:
             # SAM.gov API v2
-            url = "https://api.sam.gov/opportunities/v2/search"
+            url = "https://api.sam.gov/prod/opportunities/v2/search"
             # Search last 90 days for more results
             posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
             params = {
