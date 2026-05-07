@@ -13,16 +13,16 @@ class Config:
 
 # Focused search terms for 211 procurement / lead gen
 SEARCH_TERMS_SAM = [
-    '211 information referral services',
-    '211 call center',
-    '211 contact center',
-    '211 crisis hotline',
-    'information and referral services',
-    'community helpline services',
-    'human services call center',
-    '211 BPO',
-    '211 overflow call center',
-    '211 surge staffing',
+    '211',
+    'call center services',
+    'contact center services',
+    'information and referral',
+    'crisis hotline',
+    'helpline services',
+    'BPO services',
+    'customer service center',
+    'call center staffing',
+    'overflow call center',
 ]
 
 SEARCH_TERMS_GRANTS = [
