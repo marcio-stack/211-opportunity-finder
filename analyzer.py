@@ -13,7 +13,9 @@ def analyze_opportunity(opportunity, api_key=''):
         import anthropic
         client = anthropic.Anthropic(api_key=api_key)
 
-        prompt = f"""Analyze this opportunity for a BPO company called Frontline Group that specializes in 211 information and referral services. Frontline provides:
+        prompt = f"""You are a lead qualification analyst for Frontline Group, a BPO company specializing in 211 information and referral services. Score this lead for sales potential.
+
+Frontline provides:
 - Surge staffing support for 211 call centers
 - After-hours and overflow coverage
 - Disaster response agent deployment
@@ -22,9 +24,9 @@ def analyze_opportunity(opportunity, api_key=''):
 - External agent monitoring (Ternio)
 - Inform USA-compliant operations
 - 20+ years of CX experience
-- FedRIMP environment, NICE and Zoom certified
+- FedRAMP environment, NICE and Zoom certified
 
-Opportunity:
+Lead:
 Title: {opportunity.get('title', '')}
 Source: {opportunity.get('source', '')}
 State: {opportunity.get('state', '')}
@@ -32,12 +34,20 @@ Type: {opportunity.get('opportunity_type', '')}
 Description: {opportunity.get('description', '')[:1500]}
 Deadline: {opportunity.get('deadline', '')}
 
+SCORING RULES:
+- 80-100: Direct RFP/procurement for 211, call center, or I&R services where Frontline can bid
+- 60-79: Strong signal — funding for 211 expansion, contract expiry, or service gap Frontline could fill
+- 40-59: Moderate signal — related grant/funding, vendor transition, or adjacent opportunity
+- 20-39: Weak signal — tangentially related, worth monitoring
+- 1-19: Not relevant — false positive, wrong industry, or no actionable lead
+
 Respond in JSON format only:
 {{
-    "relevance_score": <1-100 integer, 100 = perfect fit>,
-    "analysis": "<2-3 sentences explaining why this is or isn't relevant to Frontline>",
-    "recommended_action": "<specific next step Frontline should take>",
-    "urgency": "<immediate|high|medium|low>"
+    "relevance_score": <1-100 integer>,
+    "lead_quality": "<hot|warm|cool|cold>",
+    "analysis": "<2-3 sentences: why this is/isn't a good lead for Frontline's sales team>",
+    "recommended_action": "<specific next step for Frontline's BD team>",
+    "urgency": "<immediate|this_week|this_month|monitor>"
 }}"""
 
         response = client.messages.create(
@@ -59,46 +69,119 @@ Respond in JSON format only:
 
 
 def score_without_ai(opportunity):
-    """Rule-based scoring when AI is unavailable."""
-    score = 30
+    """Rule-based lead scoring when AI is unavailable."""
+    score = 20  # Start low — must earn points
     title = (opportunity.get('title', '') + ' ' + opportunity.get('description', '')).lower()
+    opp_type = opportunity.get('opportunity_type', '')
+    source = opportunity.get('source', '')
 
-    high_value = ['211', 'information and referral', 'crisis line', 'community resource',
-                  'helpline', 'hotline', 'human services call']
-    medium_value = ['call center', 'contact center', 'bpo', 'surge', 'overflow',
-                    'after hours', 'customer service', 'managed services']
-    signal_words = ['rfp', 'bid', 'solicitation', 'proposal', 'contract',
-                    'vendor', 'procurement', 'award']
-    negative = ['construction', 'janitorial', 'landscaping', 'food service', 'IT hardware']
+    # === STRONG LEAD SIGNALS (high score) ===
+    hot_keywords = [
+        '211 rfp', '211 request for proposal', '211 solicitation',
+        '211 call center rfp', '211 contact center rfp',
+        'information and referral rfp', 'crisis hotline rfp',
+        '211 procurement', '211 bid opportunity',
+    ]
+    for kw in hot_keywords:
+        if kw in title:
+            score += 30
 
-    for kw in high_value:
+    # Direct 211 service keywords
+    direct_211 = [
+        '211 services', '211 call center', '211 contact center',
+        '211 hotline', '211 helpline', '2-1-1 services',
+        '211 information and referral', '211 crisis',
+    ]
+    for kw in direct_211:
         if kw in title:
             score += 15
-    for kw in medium_value:
+
+    # Procurement/RFP signals
+    procurement_words = [
+        'rfp', 'request for proposal', 'bid', 'solicitation',
+        'procurement', 'vendor selection', 'competitive',
+        'invitation to bid', 'request for quote',
+    ]
+    for kw in procurement_words:
+        if kw in title:
+            score += 10
+
+    # Service type alignment
+    service_alignment = [
+        'call center', 'contact center', 'bpo', 'surge',
+        'overflow', 'after hours', 'after-hours',
+        'managed services', 'outsource', 'staffing',
+    ]
+    for kw in service_alignment:
         if kw in title:
             score += 8
-    for kw in signal_words:
-        if kw in title:
-            score += 5
-    for kw in negative:
-        if kw in title:
-            score -= 20
 
+    # === MODERATE SIGNALS ===
+    moderate_signals = [
+        'information and referral', 'crisis line', 'crisis hotline',
+        'community resource', 'human services',
+        'helpline', 'united way',
+    ]
+    for kw in moderate_signals:
+        if kw in title:
+            score += 6
+
+    # Opportunity type bonuses
+    type_bonuses = {
+        'rfp': 15,
+        'procurement': 12,
+        'contract_expiry': 10,
+        'service_gap': 8,
+        'expansion': 6,
+        'funding': 5,
+        'grant': 4,
+        'disaster_response': 5,
+        'contract_award': 3,  # Lower — already awarded, but useful intel
+        'market_signal': 2,
+    }
+    score += type_bonuses.get(opp_type, 0)
+
+    # Source bonuses (SAM.gov = real procurement)
+    source_bonuses = {'SAM.gov': 10, 'Grants.gov': 5, 'Google News': 0}
+    score += source_bonuses.get(source, 0)
+
+    # === NEGATIVE SIGNALS ===
+    noise_keywords = [
+        'construction', 'janitorial', 'landscaping', 'food service',
+        'it hardware', 'software license', 'real estate',
+        'military', 'defense', 'weapons',
+    ]
+    for kw in noise_keywords:
+        if kw in title:
+            score -= 25
+
+    # Cap the score
     score = max(1, min(100, score))
 
+    # Determine lead quality and urgency
     if score >= 70:
-        urgency = 'high'
-        action = 'Review immediately and prepare response'
+        quality = 'hot'
+        urgency = 'immediate'
+        action = 'Review immediately — prepare bid response or reach out to contracting officer'
     elif score >= 50:
-        urgency = 'medium'
-        action = 'Review within 48 hours'
+        quality = 'warm'
+        urgency = 'this_week'
+        action = 'Review this week — research the organization and prepare outreach'
+    elif score >= 30:
+        quality = 'cool'
+        urgency = 'this_month'
+        action = 'Add to pipeline — monitor for developments and find the right contact'
     else:
-        urgency = 'low'
-        action = 'Monitor for relevance'
+        quality = 'cold'
+        urgency = 'monitor'
+        action = 'Low priority — monitor only, may become relevant later'
 
     return {
         'relevance_score': score,
-        'analysis': f'Rule-based scoring. Keywords matched in title/description. Score: {score}/100.',
+        'lead_quality': quality,
+        'analysis': f'Lead scored {score}/100 based on keyword matching. '
+                     f'Type: {opp_type}. Source: {source}. '
+                     f'{"Strong procurement signal detected." if score >= 60 else "Moderate or weak signal — review for relevance."}',
         'recommended_action': action,
         'urgency': urgency,
     }
