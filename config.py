@@ -11,8 +11,7 @@ class Config:
     SAM_API_KEY = os.environ.get('SAM_API_KEY', '')
     SCHEDULER_API_ENABLED = True
 
-# Focused search terms for 211 procurement / lead gen
-# NARROWED: Only 211-specific terms to avoid HVAC, IT, and other irrelevant RFPs
+# ── 211-specific SAM.gov title search terms ──
 SEARCH_TERMS_SAM = [
     '211 services',
     '211 call center',
@@ -44,7 +43,119 @@ SEARCH_TERMS_NEWS = [
     '"information and referral" RFP procurement',
 ]
 
-# Keywords that indicate FALSE POSITIVES (not about 211 services)
+# ── Known 211 organizations (from 211 Master Database) ──
+# Used to cross-reference SAM.gov results against actual 211 operators
+ORGANIZATIONS_211 = [
+    'United Way of Central Alabama',
+    '211 Connects Alabama',
+    'River Region United Way',
+    'United Way of Northwest Alabama',
+    'Hands On River Region',
+    'United Way of Anchorage',
+    'Alaska 211',
+    'Community Information & Referral',
+    'Arizona 211',
+    'United Way of Arkansas',
+    'Arkansas 211',
+    '211 LA County',
+    '211 San Diego',
+    '211 Orange County',
+    'Inland SoCal 211',
+    '211 NorCal',
+    '211 Sacramento',
+    '211 Connecting Point',
+    '211 Ventura County',
+    '211 Bay Area',
+    '211 Monterey Bay',
+    'Mile High United Way',
+    'Colorado 211',
+    '211 Connecticut',
+    'United Way of Connecticut',
+    'United Way of Delaware',
+    'Delaware 211',
+    '211 Florida',
+    'FLAIRS',
+    '211 Broward',
+    '211 Tampa Bay Cares',
+    'Heart of Florida United Way',
+    'United Way of Greater Atlanta',
+    'Aloha United Way',
+    'Idaho CareLine',
+    'Idaho 211',
+    '211 Illinois',
+    'United Way of Metro Chicago',
+    'Indiana 211',
+    'United Way of Central Iowa',
+    'Iowa 211',
+    'United Way of South Central Kansas',
+    '211 Kansas',
+    'Metro United Way Louisville',
+    'United Way of Bowling Green',
+    'United Way of Southeast Louisiana',
+    'Louisiana 211',
+    'The Opportunity Alliance',
+    '211 Maine',
+    '211 Maryland',
+    'United Way of Massachusetts Bay',
+    'Mass 211',
+    'United Way for Southeastern Michigan',
+    'Michigan 211',
+    '211 Northeast Michigan',
+    'Greater Twin Cities United Way',
+    'Mississippi 211',
+    'Missouri 211',
+    'Montana 211',
+    'United Way of the Midlands',
+    'Nebraska 211',
+    'Nevada 211',
+    '211 New Hampshire',
+    'NJ 211',
+    'United Way of New Jersey',
+    'United Way of Central New Mexico',
+    'New Mexico 211',
+    '211 New York State',
+    'United Way of Greater Rochester',
+    '211 WNY',
+    'NC 211',
+    'United Way of North Carolina',
+    'FirstLink',
+    'North Dakota 211',
+    'LSS 211 Central Ohio',
+    'United Way of Greater Cincinnati',
+    '211 Oklahoma',
+    'Heartline',
+    '211info',
+    'PA 211',
+    'United Way of Pennsylvania',
+    '211 Rhode Island',
+    'United Way of Rhode Island',
+    'United Way Association of SC',
+    'SC 211',
+    '211 Helpline Center',
+    'Tennessee 211',
+    '211 Texas',
+    'United Way of Tarrant County',
+    'United Way of San Antonio',
+    'United Way of Greater Houston',
+    'DETCOG 211',
+    'Texoma Council of Governments',
+    'United Way of Metropolitan Dallas',
+    'United Way of Salt Lake',
+    'Utah 211',
+    'Vermont 211',
+    '211 Virginia',
+    'Council of Community Services',
+    'Washington 211',
+    'WIN 211',
+    'West Virginia 211',
+    'Wisconsin 211',
+    'United Way of Laramie County',
+    'Wyoming 211',
+    'DC 211',
+    'United Way NCA',
+]
+
+# ── False positive keywords ──
 NEGATIVE_TITLE_KEYWORDS = [
     # Roads / infrastructure
     'highway', 'road', 'widening', 'paving', 'bridge', 'route 211',
@@ -77,12 +188,18 @@ NEGATIVE_TITLE_KEYWORDS = [
     'trash', 'waste management', 'recycling', 'hazardous waste', 'debris',
     # Security (physical)
     'security guard', 'patrol', 'surveillance', 'alarm system',
+    # Hardware / parts / supplies
+    'valve', 'pump', 'manifold', 'actuator', 'circuit card', 'power supply',
+    'brake', 'nut,', 'bolt', 'gasket', 'fitting', 'hose', 'cable',
+    'display unit', 'test set', 'extension cord', 'tuning unit',
+    # Weapons / ships / military equipment
+    'uss ', 'shooting range', 'ammunition', 'munitions',
     # Other irrelevant
     'uniforms', 'laundry', 'pest control', 'elevator', 'generator',
     'fire suppression', 'sprinkler', 'asbestos', 'lead abatement',
 ]
 
-# Keywords that indicate TRUE POSITIVES (actually about 211/call center services)
+# ── True positive keywords ──
 POSITIVE_KEYWORDS = [
     '211 services', '211 call center', '211 hotline', '211 helpline',
     '211 contact center', '211 information', '211 referral',
