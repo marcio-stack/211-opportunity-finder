@@ -7,7 +7,7 @@ from scrapers import run_all_scrapers, get_diagnostics, search_sam_gov_raw_test
 from analyzer import analyze_opportunity
 from seed_data import seed_organizations
 from config import Config
-
+ 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
