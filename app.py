@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify
 from flask_apscheduler import APScheduler
 from models import db, Organization, Opportunity, SearchLog
-from scrapers import run_all_scrapers, get_diagnostics, search_sam_gov_raw_test
+from scrapers import run_all_scrapers, get_diagnostics, search_sam_gov_raw_test, search_211_ndp
 from analyzer import analyze_opportunity
 from seed_data import seed_organizations
 from config import Config
@@ -45,7 +45,7 @@ def run_scheduled_scan():
         log = SearchLog(search_type='scheduled', query='all', source='all_scrapers')
 
         try:
-            results = run_all_scrapers(sam_api_key=app.config.get('SAM_API_KEY', ''))
+            results = run_all_scrapers(sam_api_key=app.config.get('SAM_API_KEY', ''), ndp_api_key=app.config.get('NDP_API_KEY', ''))
             log.results_found = len(results)
             new_count = 0
 
@@ -229,8 +229,11 @@ def manual_search():
         elif source == 'grants':
             from scrapers import search_grants_gov
             results = search_grants_gov()
+        elif source == '211':
+            from scrapers import search_211_ndp as search_ndp
+            results = search_ndp(app.config.get('NDP_API_KEY', ''))
         else:
-            results = run_all_scrapers(sam_api_key=app.config.get('SAM_API_KEY', ''))
+            results = run_all_scrapers(sam_api_key=app.config.get('SAM_API_KEY', ''), ndp_api_key=app.config.get('NDP_API_KEY', ''))
 
         # Filter by keywords if provided
         if keywords:
