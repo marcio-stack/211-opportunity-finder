@@ -9,6 +9,7 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
     SAM_API_KEY = os.environ.get('SAM_API_KEY', '')
+    NDP_API_KEY = os.environ.get('NDP_API_KEY', '')
     SCHEDULER_API_ENABLED = True
 
 # ── 211-specific SAM.gov title search terms ──
