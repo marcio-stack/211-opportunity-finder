@@ -17,6 +17,7 @@ _last_diagnostics = {
     'sam_gov': {'status': 'not_run', 'detail': ''},
     'google_news': {'status': 'not_run', 'detail': ''},
     'grants_gov': {'status': 'not_run', 'detail': ''},
+    '211_ndp': {'status': 'not_run', 'detail': ''},
 }
 
 
@@ -608,7 +609,149 @@ def extract_state_from_text(text):
     return ''
 
 
-def run_all_scrapers(sam_api_key=''):
+# --- 211 National Data Platform (NDP) Scraper ---
+
+NDP_BASE_URL = 'https://api.211.org/search/v1/api'
+
+NDP_KEYWORDS = [
+    'call center',
+    'contact center', 
+    'information and referral',
+    '211',
+    'crisis line',
+    'helpline',
+    'telephone assistance',
+    'BPO',
+]
+
+
+def search_211_ndp(ndp_api_key=''):
+    """Search 211 National Data Platform for opportunities related to call center services."""
+    results = []
+    _last_diagnostics['211_ndp'] = {'status': 'running', 'detail': ''}
+
+    if not ndp_api_key:
+        _last_diagnostics['211_ndp'] = {
+            'status': 'skipped',
+            'detail': 'No NDP API key configured'
+        }
+        logger.warning("211 NDP: No API key configured, skipping")
+        return results
+
+    headers = {
+        'Ocp-Apim-Subscription-Key': ndp_api_key,
+        'Accept': 'application/json',
+    }
+
+    try:
+        # Step 1: Get list of 211 data owners (centers) for context
+        logger.info("211 NDP: Fetching data owners list...")
+        owners_url = f'{NDP_BASE_URL}/Filters/DataOwners'
+        owners_resp = requests.get(owners_url, headers=headers, timeout=30)
+        owners_resp.raise_for_status()
+        data_owners = owners_resp.json()
+        logger.info(f"211 NDP: Found {len(data_owners)} data owners/centers")
+
+        # Step 2: Search by each keyword
+        seen_titles = set()
+        for keyword in NDP_KEYWORDS:
+            try:
+                logger.info(f"211 NDP: Searching for '{keyword}'...")
+                search_url = f'{NDP_BASE_URL}/Search/Keyword'
+                params = {
+                    'Keyword': keyword,
+                    'Top': 25,
+                    'OrderBy': 'Relevance',
+                }
+                resp = requests.get(
+                    search_url, headers=headers, params=params, timeout=30
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+                # Handle response - may be list or dict with results key
+                items = data if isinstance(data, list) else data.get('results', data.get('Items', []))
+
+                for item in items:
+                    title = item.get('Name', item.get('name', item.get('ServiceName', '')))
+                    if not title or title in seen_titles:
+                        continue
+                    seen_titles.add(title)
+
+                    # Extract location/state info
+                    location = item.get('Location', item.get('location', {}))
+                    state = ''
+                    if isinstance(location, dict):
+                        state = location.get('State', location.get('state', ''))
+                    elif isinstance(location, str):
+                        state = extract_state_from_text(location)
+
+                    # Build description from available fields
+                    desc_parts = []
+                    org_name = item.get('OrganizationName', item.get('organizationName', ''))
+                    if org_name:
+                        desc_parts.append(f"Organization: {org_name}")
+                    svc_desc = item.get('Description', item.get('description', ''))
+                    if svc_desc:
+                        desc_parts.append(svc_desc[:500])
+                    taxonomy = item.get('Taxonomy', item.get('taxonomy', ''))
+                    if taxonomy:
+                        desc_parts.append(f"Category: {taxonomy}")
+
+                    description = ' | '.join(desc_parts) if desc_parts else f'211 service: {keyword}'
+
+                    # Determine if this is a potential opportunity for Frontline
+                    source_url = item.get('URL', item.get('url', ''))
+                    if not source_url:
+                        source_url = f'https://apiportal.211.org'
+
+                    # Check relevance - is this a 211 center that might need call center services?
+                    contact = item.get('Phone', item.get('phone', ''))
+                    email = item.get('Email', item.get('email', ''))
+                    contact_info = f"Phone: {contact}" if contact else ''
+                    if email:
+                        contact_info += f" | Email: {email}" if contact_info else f"Email: {email}"
+
+                    results.append({
+                        'title': f"211 Service: {title}",
+                        'source': '211_ndp',
+                        'source_url': source_url,
+                        'state': state or extract_state_from_text(description),
+                        'opportunity_type': '211_service',
+                        'description': description,
+                        'deadline': '',
+                        'contact_info': contact_info,
+                    })
+
+                logger.info(f"211 NDP: '{keyword}' returned {len(items)} items")
+
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"211 NDP: Error searching '{keyword}': {e}")
+                continue
+
+        # Filter out false positives
+        filtered = [r for r in results if not is_false_positive(r)]
+
+        _last_diagnostics['211_ndp'] = {
+            'status': 'completed',
+            'detail': f'Found {len(filtered)} relevant services from {len(seen_titles)} total',
+            'data_owners_count': len(data_owners),
+            'keywords_searched': len(NDP_KEYWORDS),
+        }
+        logger.info(f"211 NDP: Complete. {len(filtered)} relevant results (filtered from {len(results)})")
+        return filtered
+
+    except requests.exceptions.RequestException as e:
+        _last_diagnostics['211_ndp'] = {
+            'status': 'error',
+            'detail': str(e)
+        }
+        logger.error(f"211 NDP scraper error: {e}")
+        return results
+
+
+
+def run_all_scrapers(sam_api_key='', ndp_api_key=''):
     """Run all scrapers and return combined, filtered results."""
     all_results = []
 
@@ -633,5 +776,10 @@ def run_all_scrapers(sam_api_key=''):
     all_results.extend(grants_results)
     logger.info(f"Grants.gov returned {len(grants_results)} leads")
 
-    logger.info(f"SCAN COMPLETE: Total {len(all_results)} leads (SAM: {len(sam_results)}, News: {len(news_results)}, Grants: {len(grants_results)})")
+    logger.info("Running 211 NDP scraper...")
+    ndp_results = search_211_ndp(ndp_api_key)
+    all_results.extend(ndp_results)
+    logger.info(f"211 NDP returned {len(ndp_results)} leads")
+
+    logger.info(f"SCAN COMPLETE: Total {len(all_results)} leads (SAM: {len(sam_results)}, News: {len(news_results)}, Grants: {len(grants_results)}, 211-NDP: {len(ndp_results)})")
     return all_results
