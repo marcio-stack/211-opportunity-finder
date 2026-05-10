@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import json
 import re
 import logging
+import time
 from config import (
     SEARCH_TERMS_SAM, SEARCH_TERMS_GRANTS, SEARCH_TERMS_NEWS,
     NEGATIVE_TITLE_KEYWORDS, POSITIVE_KEYWORDS,
@@ -414,167 +415,213 @@ def _build_sam_result(opp, title, desc):
 
 
 def search_google_news(query=None):
-    """Search Google News RSS for 211-related procurement signals."""
-    global _last_diagnostics
+    """Search Google News via RSS feeds for 211/call center opportunities."""
     results = []
-    search_queries = SEARCH_TERMS_NEWS
-    errors = []
-    raw_count = 0
+    _last_diagnostics['google_news'] = {'status': 'running', 'detail': ''}
+
+    search_queries = [
+        '211 call center contract OR RFP OR award',
+        '211 information referral services procurement',
+        'call center government contract award',
+        'contact center BPO government RFP',
+        '211 helpline outsourcing OR vendor OR partner',
+        'crisis hotline call center services RFP',
+    ]
+
+    if query:
+        search_queries = [query]
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    }
 
     for q in search_queries:
         try:
-            rss_url = f"https://news.google.com/rss/search?q={requests.utils.quote(q)}&hl=en-US&gl=US&ceid=US:en"
-            resp = requests.get(rss_url, timeout=15,
-                                headers={'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)'})
-            logger.info(f"Google News '{q}': status={resp.status_code}")
+            encoded_query = requests.utils.quote(q)
+            rss_url = f'https://news.google.com/rss/search?q={encoded_query}&hl=en-US&gl=US&ceid=US:en'
+            resp = requests.get(rss_url, headers=headers, timeout=15)
 
-            if resp.status_code == 200:
-                soup = BeautifulSoup(resp.content, 'lxml-xml')
-                items = soup.find_all('item')
-                raw_count += len(items)
+            if resp.status_code != 200:
+                logger.warning(f"Google News RSS returned {resp.status_code} for query: {q}")
+                continue
 
-                for item in items[:5]:
-                    title = item.find('title')
-                    link = item.find('link')
-                    desc = item.find('description')
+            # Parse RSS XML
+            import xml.etree.ElementTree as ET
+            root = ET.fromstring(resp.content)
+            channel = root.find('channel')
+            if channel is None:
+                continue
 
-                    if title:
-                        title_text = title.get_text()
+            items = channel.findall('item')
+            logger.info(f"Google News RSS: {len(items)} items for '{q}'")
 
-                        if is_false_positive(title_text):
-                            continue
+            for item in items[:10]:
+                title_el = item.find('title')
+                link_el = item.find('link')
+                pub_date_el = item.find('pubDate')
+                source_el = item.find('source')
 
-                        desc_text = desc.get_text() if desc else ''
-                        if not is_relevant_to_211_services(title_text, desc_text):
-                            continue
+                title = title_el.text if title_el is not None else ''
+                link = link_el.text if link_el is not None else ''
+                pub_date = pub_date_el.text if pub_date_el is not None else ''
+                source_name = source_el.text if source_el is not None else 'Google News'
 
-                        results.append({
-                            'title': title_text,
-                            'source': 'Google News',
-                            'source_url': link.get_text() if link else '',
-                            'state': extract_state_from_text(title_text),
-                            'opportunity_type': classify_lead_type(title_text, desc_text, 'Google News'),
-                            'description': desc_text,
-                            'deadline': '',
-                            'contact_info': '',
-                            'discovered_at': datetime.utcnow(),
-                        })
-            else:
-                errors.append(f"'{q}': HTTP {resp.status_code}")
+                if not title:
+                    continue
+
+                # Filter for relevance
+                title_lower = title.lower()
+                relevant_terms = ['211', 'call center', 'contact center', 'rfp',
+                                  'contract', 'award', 'procurement', 'helpline',
+                                  'crisis line', 'bpo', 'outsourc']
+                if not any(term in title_lower for term in relevant_terms):
+                    continue
+
+                if is_false_positive(title):
+                    continue
+
+                state = extract_state_from_text(title)
+
+                results.append({
+                    'title': title,
+                    'source': 'google_news',
+                    'source_url': link,
+                    'state': state,
+                    'published_date': pub_date,
+                    'description': f"Source: {source_name}. Published: {pub_date}",
+                    'relevance_score': 0.6,
+                })
+
+            time.sleep(2)  # Rate limiting between queries
+
         except Exception as e:
-            logger.error(f"Google News search error for '{q}': {e}")
-            errors.append(f"'{q}': {str(e)[:100]}")
-
-    # Deduplicate by title
-    seen = set()
-    unique = []
-    for r in results:
-        if r['title'] not in seen:
-            seen.add(r['title'])
-            unique.append(r)
+            logger.error(f"Google News RSS error for '{q}': {str(e)}")
+            continue
 
     _last_diagnostics['google_news'] = {
-        'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
-        'detail': f"Searched {len(search_queries)} queries, {raw_count} raw items, {len(unique)} after filtering. Errors: {errors}" if errors else f"Searched {len(search_queries)} queries, {raw_count} raw items, {len(unique)} after filtering",
+        'status': 'success' if results else 'no_results',
+        'detail': f'Found {len(results)} news leads via RSS'
     }
-
-    logger.info(f"Google News total: {raw_count} raw, {len(results)} passed filters, {len(unique)} unique")
-    return unique
+    logger.info(f"Google News total: {len(results)} relevant results")
+    return results
 
 
 def search_grants_gov(keywords=None):
-    """Search Grants.gov for 211-related federal grants."""
-    global _last_diagnostics
+    """Search Grants.gov for relevant federal grant opportunities."""
     results = []
-    terms = keywords or SEARCH_TERMS_GRANTS
-    errors = []
-    raw_count = 0
+    _last_diagnostics['grants_gov'] = {'status': 'running', 'detail': ''}
 
-    for term in terms:
+    search_keywords = keywords or [
+        'call center services',
+        '211 information referral',
+        'contact center operations',
+        'crisis hotline services',
+        'telephone assistance program',
+    ]
+
+    # Grants.gov REST API v2
+    api_url = 'https://www.grants.gov/grantsws/rest/opportunities/search'
+
+    headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (compatible; OpportunityFinder/1.0)',
+    }
+
+    for keyword in search_keywords:
         try:
-            url = "https://api.grants.gov/v1/opportunities/search"
+            # POST request with search criteria
             payload = {
-                'keyword': term,
-                'oppStatuses': 'forecasted,posted',
-                'sortBy': 'openDate',
-                'sortOrder': 'desc',
+                'keyword': keyword,
+                'oppStatuses': 'forecasted|posted',
+                'sortBy': 'openDate|desc',
                 'rows': 25,
+                'startRecordNum': 0,
             }
-            logger.info(f"Grants.gov searching: '{term}'")
-            resp = requests.post(url, json=payload, timeout=30,
-                                 headers={'Content-Type': 'application/json',
-                                          'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)'})
-            logger.info(f"Grants.gov v1 API for '{term}': status={resp.status_code}")
 
-            if resp.status_code != 200:
-                logger.info(f"Trying legacy Grants.gov API for '{term}'...")
-                url = "https://www.grants.gov/grantsws/rest/opportunities/search/"
-                params = {
-                    'keyword': term,
-                    'oppStatus': 'forecasted|posted',
+            resp = requests.post(api_url, json=payload, headers=headers, timeout=20)
+
+            if resp.status_code == 403 or resp.status_code == 405:
+                # Try alternative endpoint
+                alt_url = 'https://www.grants.gov/grantsws/rest/opportunity/req.json'
+                alt_payload = {
+                    'keyword': keyword,
+                    'oppStatuses': 'forecasted|posted',
                     'sortBy': 'openDate|desc',
                     'rows': 25,
                 }
-                resp = requests.get(url, params=params, timeout=30,
-                                    headers={'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)'})
-                logger.info(f"Grants.gov legacy for '{term}': status={resp.status_code}")
+                resp = requests.post(alt_url, json=alt_payload, headers=headers, timeout=20)
 
-            if resp.status_code == 200:
-                data = resp.json()
-                opps = data.get('oppHits', data.get('opportunities', []))
-                raw_count += len(opps)
-                logger.info(f"Grants.gov '{term}': {len(opps)} raw results")
+            if resp.status_code == 403 or resp.status_code == 405:
+                # Try the XML API as last resort
+                xml_url = f'https://www.grants.gov/grantsws/rest/opportunities/search/xml?keyword={requests.utils.quote(keyword)}&oppStatuses=forecasted|posted&sortBy=openDate|desc&rows=25'
+                resp = requests.get(xml_url, headers=headers, timeout=20)
 
-                for opp in opps:
-                    title = opp.get('title', opp.get('opportunityTitle', ''))
-                    synopsis = (opp.get('synopsis', opp.get('description', '')) or '')[:2000]
+            if resp.status_code != 200:
+                logger.warning(f"Grants.gov returned {resp.status_code} for: {keyword}")
+                # Try scraping the search page as fallback
+                try:
+                    search_url = f'https://www.grants.gov/search-grants?cfda=&closing=&department=&keyword={requests.utils.quote(keyword)}&oppNum=&oppStatuses=forecasted|posted&sortBy=openDate|desc'
+                    page_resp = requests.get(search_url, headers={'User-Agent': headers['User-Agent']}, timeout=15)
+                    if page_resp.status_code == 200 and 'opportunity' in page_resp.text.lower():
+                        logger.info(f"Grants.gov page accessible for '{keyword}', but structured parsing needed")
+                except Exception:
+                    pass
+                continue
 
-                    if is_false_positive(title):
-                        continue
+            data = resp.json()
 
-                    if not is_relevant_to_211_services(title, synopsis):
-                        text = (title + ' ' + synopsis).lower()
-                        if not any(kw in text for kw in ['social services', 'community services',
-                                                          'human services', 'crisis services',
-                                                          'helpline', 'hotline', 'call center']):
-                            continue
+            # Handle different response structures
+            opps = []
+            if 'oppHits' in data:
+                opps = data.get('oppHits', [])
+            elif 'opportunities' in data:
+                opps = data.get('opportunities', [])
+            elif 'response' in data:
+                opps = data.get('response', {}).get('body', {}).get('oppHits', [])
 
-                    opp_id = opp.get('id', opp.get('opportunityId', ''))
-                    results.append({
-                        'title': title,
-                        'source': 'Grants.gov',
-                        'source_url': f"https://www.grants.gov/search-results-detail/{opp_id}",
-                        'state': '',
-                        'opportunity_type': classify_lead_type(title, synopsis, 'Grants.gov'),
-                        'description': synopsis,
-                        'deadline': opp.get('closeDate', opp.get('closeDateStr', '')),
-                        'contact_info': opp.get('agencyName', opp.get('agency', '')),
-                        'discovered_at': datetime.utcnow(),
-                    })
-            else:
-                error_text = resp.text[:300]
-                logger.error(f"Grants.gov error for '{term}': HTTP {resp.status_code} - {error_text}")
-                errors.append(f"'{term}': HTTP {resp.status_code}")
+            logger.info(f"Grants.gov: {len(opps)} results for '{keyword}'")
+
+            for opp in opps[:15]:
+                title = opp.get('title', opp.get('oppTitle', ''))
+                opp_number = opp.get('number', opp.get('oppNumber', opp.get('id', '')))
+                agency = opp.get('agency', opp.get('agencyName', ''))
+                close_date = opp.get('closeDate', opp.get('closingDate', ''))
+                open_date = opp.get('openDate', opp.get('openingDate', ''))
+                description = opp.get('description', opp.get('synopsis', ''))
+
+                if not title:
+                    continue
+
+                if is_false_positive(title):
+                    continue
+
+                opp_url = f'https://www.grants.gov/search-results-detail/{opp_number}' if opp_number else 'https://www.grants.gov'
+
+                state = extract_state_from_text(f"{title} {description} {agency}")
+
+                results.append({
+                    'title': title,
+                    'source': 'grants_gov',
+                    'source_url': opp_url,
+                    'state': state,
+                    'published_date': open_date,
+                    'description': f"Agency: {agency}. Closes: {close_date}. {description[:200] if description else ''}",
+                    'relevance_score': 0.7,
+                    'opportunity_number': opp_number,
+                })
+
+            time.sleep(2)
 
         except Exception as e:
-            logger.error(f"Grants.gov search error for '{term}': {e}")
-            errors.append(f"'{term}': {str(e)[:100]}")
-
-    # Deduplicate by title
-    seen = set()
-    unique = []
-    for r in results:
-        if r['title'] not in seen:
-            seen.add(r['title'])
-            unique.append(r)
+            logger.error(f"Grants.gov error for '{keyword}': {str(e)}")
+            continue
 
     _last_diagnostics['grants_gov'] = {
-        'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
-        'detail': f"Searched {len(terms)} terms, {raw_count} raw results, {len(unique)} after filtering. Errors: {errors}" if errors else f"Searched {len(terms)} terms, {raw_count} raw results, {len(unique)} after filtering",
+        'status': 'success' if results else 'no_results',
+        'detail': f'Found {len(results)} grant opportunities'
     }
-
-    logger.info(f"Grants.gov total: {raw_count} raw, {len(results)} passed filters, {len(unique)} unique")
-    return unique
+    logger.info(f"Grants.gov total: {len(results)} results")
+    return results
 
 
 def extract_state_from_text(text):
