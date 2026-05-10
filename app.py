@@ -109,7 +109,7 @@ def api_stats():
         Opportunity.relevance_score >= 70,
         Opportunity.discovered_at >= cutoff
     ).count()
-    last_scan = SearchLog.query.order_by(db.desc(SearchLog.ran_at)).first()
+    last_scan = db.session.query(SearchLog).order_by(db.desc(SearchLog.ran_at)).first()
 
     return jsonify({
         'total_organizations': total_orgs,
@@ -327,7 +327,7 @@ def api_diagnostics():
     diag['anthropic_key_configured'] = bool(app.config.get('ANTHROPIC_API_KEY', ''))
     diag['retention_days'] = RETENTION_DAYS
 
-    last_scan = SearchLog.query.order_by(db.desc(SearchLog.ran_at)).first()
+    last_scan = db.session.query(SearchLog).order_by(db.desc(SearchLog.ran_at)).first()
     diag['last_scan'] = {
         'ran_at': last_scan.ran_at.isoformat() if last_scan else None,
         'status': last_scan.status if last_scan else None,
