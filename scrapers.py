@@ -250,154 +250,142 @@ def _sam_search_request(api_key, params, headers, label):
 def search_sam_gov(api_key, keywords=None):
     """Search SAM.gov for 211-related procurement opportunities.
 
-    Strategy:
-    1. Search by 211-specific title terms (from config)
-    2. Search by NAICS codes for call centers / human services
-    3. Search by known 211 organization names
-    4. Apply strict relevance filtering â ONLY keep results that match
-       211 services, known organizations, or positive keywords
+    Optimized to avoid rate limiting:
+    - Reduced from 15 to 5 search terms
+    - 8-second delay between API calls
+    - Single combined search approach
     """
     global _last_diagnostics
 
     if not api_key:
         _last_diagnostics['sam_gov'] = {'status': 'skipped', 'detail': 'No API key configured'}
-        logger.warning("No SAM.gov API key configured â skipping SAM.gov")
         return []
 
+    _last_diagnostics['sam_gov'] = {'status': 'running', 'detail': ''}
+
     results = []
-    search_terms = keywords or SEARCH_TERMS_SAM
-    errors = []
-    raw_count = 0
-    accepted_count = 0
-    rejected_count = 0
-    sam_headers = {
-        'User-Agent': 'Mozilla/5.0 (compatible; FrontlineOpportunityFinder/1.0)',
+    seen_ids = set()
+    base_url = 'https://api.sam.gov/opportunities/v2/search'
+
+    # Reduced search terms - 5 high-value queries instead of 15
+    search_terms = [
+        '211 call center',
+        'contact center services',
+        'crisis hotline',
+        'information referral services',
+        'call center outsourcing',
+    ]
+
+    if keywords:
+        search_terms = keywords if isinstance(keywords, list) else [keywords]
+
+    headers = {
+        'Content-Type': 'application/json',
         'Accept': 'application/json',
     }
 
-    # --- PHASE 1: Search by 211-specific title terms ---
-    logger.info("=== PHASE 1: Title search with 211-specific terms ===")
-    for term in search_terms:
+    total_found = 0
+    errors = []
+    successful_queries = 0
+
+    for i, term in enumerate(search_terms):
         try:
-            opps, err = _sam_search_request(api_key, {'title': term}, sam_headers, f"title='{term}'")
-            if err:
-                errors.append(err)
-                continue
-            raw_count += len(opps)
+            # 8-second delay between requests to avoid rate limiting
+            if i > 0:
+                time.sleep(8)
 
-            for opp in opps:
-                title = opp.get('title', '')
-                desc = opp.get('description', '') or ''
-                desc = desc[:2000]
+            params = {
+                'api_key': api_key,
+                'keyword': term,
+                'postedFrom': (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y'),
+                'postedTo': datetime.now().strftime('%m/%d/%Y'),
+                'limit': 25,
+                'offset': 0,
+            }
 
-                if is_false_positive(title):
-                    rejected_count += 1
-                    logger.debug(f"  REJECTED (false positive): {title[:80]}")
+            logger.info(f"SAM.gov search {i+1}/{len(search_terms)}: '{term}'")
+            response = requests.get(base_url, params=params, headers=headers, timeout=30)
+
+            if response.status_code == 429:
+                wait_time = 30
+                logger.warning(f"SAM.gov rate limited on '{term}', waiting {wait_time}s...")
+                errors.append(f"429 on '{term}' - backing off {wait_time}s")
+                time.sleep(wait_time)
+                # Retry once after waiting
+                response = requests.get(base_url, params=params, headers=headers, timeout=30)
+                if response.status_code == 429:
+                    errors.append(f"429 again on '{term}' after retry")
                     continue
 
-                # For title matches on 211-specific terms, accept if not false positive
-                accepted_count += 1
-                results.append(_build_sam_result(opp, title, desc))
-
-        except Exception as e:
-            logger.error(f"SAM.gov title search error for '{term}': {e}")
-            errors.append(f"title='{term}': {str(e)[:100]}")
-
-    # --- PHASE 2: Search by NAICS codes for call center / human services ---
-    logger.info("=== PHASE 2: NAICS code search ===")
-    naics_codes = [
-        ('561422', 'Telemarketing Bureaus and Other Contact Centers'),
-        ('561421', 'Telephone Answering Services'),
-        ('624190', 'Other Individual and Family Services'),
-    ]
-    for naics, naics_desc in naics_codes:
-        try:
-            opps, err = _sam_search_request(api_key, {'ncode': naics}, sam_headers, f"NAICS={naics} ({naics_desc})")
-            if err:
-                errors.append(err)
+            if response.status_code != 200:
+                errors.append(f"HTTP {response.status_code} on '{term}'")
                 continue
-            raw_count += len(opps)
 
-            for opp in opps:
+            data = response.json()
+            opportunities = data.get('opportunitiesData', [])
+            successful_queries += 1
+
+            for opp in opportunities:
+                opp_id = opp.get('noticeId', '')
+                if opp_id in seen_ids:
+                    continue
+                seen_ids.add(opp_id)
+
                 title = opp.get('title', '')
-                desc = opp.get('description', '') or ''
-                desc = desc[:2000]
+                description = opp.get('description', title)
 
-                if is_false_positive(title):
-                    rejected_count += 1
+                # Check relevance - must relate to 211, call centers, or contact centers
+                text_check = (title + ' ' + description).lower()
+                relevant_terms = ['211', 'call center', 'contact center', 'hotline',
+                                  'helpline', 'crisis line', 'information referral',
+                                  'customer service', 'bpo', 'outsourc']
+                if not any(rt in text_check for rt in relevant_terms):
                     continue
 
-                # For NAICS matches, also require relevance check
-                if is_relevant_to_211_services(title, desc) or matches_211_organization(title, desc):
-                    accepted_count += 1
-                    results.append(_build_sam_result(opp, title, desc))
-                else:
-                    rejected_count += 1
-                    logger.debug(f"  REJECTED (NAICS not relevant): {title[:80]}")
-
-        except Exception as e:
-            logger.error(f"SAM.gov NAICS search error for {naics}: {e}")
-            errors.append(f"NAICS={naics}: {str(e)[:100]}")
-
-    # --- PHASE 3: Search by known 211 organization names (top orgs) ---
-    logger.info("=== PHASE 3: Organization name search ===")
-    # Pick a subset of org names to search (to stay within rate limits)
-    # Focus on the parent org types that post RFPs
-    org_search_terms = [
-        'United Way 211',
-        'United Way information referral',
-        '211 information referral',
-    ]
-    for term in org_search_terms:
-        try:
-            opps, err = _sam_search_request(api_key, {'keyword': term}, sam_headers, f"org-keyword='{term}'")
-            if err:
-                errors.append(err)
-                continue
-            raw_count += len(opps)
-
-            for opp in opps:
-                title = opp.get('title', '')
-                desc = opp.get('description', '') or ''
-                desc = desc[:2000]
-
                 if is_false_positive(title):
-                    rejected_count += 1
                     continue
 
-                # For org keyword matches, require relevance OR org match
-                if is_relevant_to_211_services(title, desc) or matches_211_organization(title, desc):
-                    accepted_count += 1
-                    results.append(_build_sam_result(opp, title, desc))
-                else:
-                    rejected_count += 1
-                    logger.debug(f"  REJECTED (org search not relevant): {title[:80]}")
+                result = {
+                    'title': title,
+                    'description': description[:500],
+                    'url': f"https://sam.gov/opp/{opp_id}/view",
+                    'source': 'sam_gov',
+                    'state': extract_state_from_text(
+                        title + ' ' + opp.get('officeAddress', {}).get('state', '')
+                    ),
+                    'posted_date': opp.get('postedDate', ''),
+                    'due_date': opp.get('responseDeadLine', ''),
+                    'found_date': datetime.utcnow().isoformat(),
+                }
+                results.append(result)
 
+            total_found += len(opportunities)
+
+        except requests.exceptions.Timeout:
+            errors.append(f"Timeout on '{term}'")
         except Exception as e:
-            logger.error(f"SAM.gov org search error for '{term}': {e}")
-            errors.append(f"org='{term}': {str(e)[:100]}")
+            errors.append(f"Error on '{term}': {str(e)[:100]}")
 
-    # --- Deduplicate by title ---
-    seen = set()
-    unique = []
-    for r in results:
-        if r['title'] not in seen:
-            seen.add(r['title'])
-            unique.append(r)
+    # Update diagnostics
+    status = 'success' if successful_queries > 0 else 'error'
+    if successful_queries > 0 and errors:
+        status = 'partial'
+
+    detail = f"{successful_queries}/{len(search_terms)} queries OK, {len(results)} relevant of {total_found} total"
+    if errors:
+        detail += f" | Errors: {'; '.join(errors[:3])}"
 
     _last_diagnostics['sam_gov'] = {
-        'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
-        'detail': (
-            f"3-phase search: {len(search_terms)} title terms + {len(naics_codes)} NAICS codes + "
-            f"{len(org_search_terms)} org keywords. "
-            f"{raw_count} raw, {accepted_count} accepted, {rejected_count} rejected, "
-            f"{len(unique)} unique. Errors: {errors}"
-        ),
+        'status': status,
+        'detail': detail,
+        'total_raw': total_found,
+        'total_relevant': len(results),
+        'queries_successful': successful_queries,
+        'queries_total': len(search_terms),
     }
 
-    logger.info(f"SAM.gov TOTAL: {raw_count} raw, {accepted_count} accepted, {rejected_count} rejected, {len(unique)} unique")
-    return unique
-
+    logger.info(f"SAM.gov: {detail}")
+    return results
 
 def _build_sam_result(opp, title, desc):
     """Build a standardized result dict from a SAM.gov opportunity."""
@@ -507,105 +495,140 @@ def search_google_news(query=None):
 
 
 def search_grants_gov(keywords=None):
-    """Search Grants.gov for relevant federal grant opportunities."""
+    """Search Grants.gov for relevant federal grant opportunities using their public search."""
     results = []
     _last_diagnostics['grants_gov'] = {'status': 'running', 'detail': ''}
 
     search_keywords = keywords or [
         'call center services',
         '211 information referral',
-        'contact center operations',
-        'crisis hotline services',
-        'telephone assistance program',
+        'contact center',
+        'crisis hotline',
+        'telephone assistance',
     ]
 
-    # Grants.gov REST API v2
-    api_url = 'https://www.grants.gov/grantsws/rest/opportunities/search'
-
     headers = {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (compatible; OpportunityFinder/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/html',
     }
+
+    errors = []
 
     for keyword in search_keywords:
         try:
-            # POST request with search criteria
-            payload = {
-                'keyword': keyword,
-                'oppStatuses': 'forecasted|posted',
-                'sortBy': 'openDate|desc',
-                'rows': 25,
-                'startRecordNum': 0,
-            }
-
-            resp = requests.post(api_url, json=payload, headers=headers, timeout=20)
-
-            if resp.status_code == 403 or resp.status_code == 405:
-                # Try alternative endpoint
-                alt_url = 'https://www.grants.gov/grantsws/rest/opportunity/req.json'
-                alt_payload = {
-                    'keyword': keyword,
-                    'oppStatuses': 'forecasted|posted',
-                    'sortBy': 'openDate|desc',
-                    'rows': 25,
-                }
-                resp = requests.post(alt_url, json=alt_payload, headers=headers, timeout=20)
-
-            if resp.status_code == 403 or resp.status_code == 405:
-                # Try the XML API as last resort
-                xml_url = f'https://www.grants.gov/grantsws/rest/opportunities/search/xml?keyword={requests.utils.quote(keyword)}&oppStatuses=forecasted|posted&sortBy=openDate|desc&rows=25'
-                resp = requests.get(xml_url, headers=headers, timeout=20)
+            # Try the Grants.gov opportunities API (v2 format)
+            encoded = requests.utils.quote(keyword)
+            search_url = f'https://www.grants.gov/grantsws/rest/opportunities/search/csv.json?keyword={encoded}&oppStatuses=forecasted|posted&sortBy=openDate|desc&rows=10'
+            resp = requests.get(search_url, headers=headers, timeout=20)
 
             if resp.status_code != 200:
-                logger.warning(f"Grants.gov returned {resp.status_code} for: {keyword}")
-                # Try scraping the search page as fallback
+                # Try alternate: the XML search
+                search_url = f'https://www.grants.gov/grantsws/rest/opportunities/search/xml?keyword={encoded}&oppStatuses=forecasted|posted&sortBy=openDate|desc&rows=10'
+                resp = requests.get(search_url, headers=headers, timeout=20)
+
+            if resp.status_code != 200:
+                # Try the newer grants API
+                api_url = 'https://api.grants.gov/v1/opportunities/search'
+                payload = {'keyword': keyword, 'status': 'posted,forecasted', 'limit': 10, 'order': 'desc', 'sort': 'openDate'}
+                resp = requests.get(api_url, params=payload, headers=headers, timeout=20)
+
+            if resp.status_code != 200:
+                # Last resort: scrape the HTML search page
+                html_url = f'https://www.grants.gov/search-grants?keyword={encoded}'
+                resp = requests.get(html_url, headers=headers, timeout=20)
+                if resp.status_code == 200 and '<' in resp.text[:10]:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    # Look for grant listing elements
+                    listings = soup.find_all(['div', 'tr', 'a'], class_=lambda c: c and ('grant' in str(c).lower() or 'opportunity' in str(c).lower() or 'result' in str(c).lower()))
+                    if not listings:
+                        listings = soup.find_all('a', href=lambda h: h and '/search-results-detail/' in str(h))
+                    
+                    for item in listings[:10]:
+                        title = item.get_text(strip=True)[:200]
+                        href = item.get('href', '')
+                        if href and not href.startswith('http'):
+                            href = f'https://www.grants.gov{href}'
+                        if title and len(title) > 10:
+                            if is_false_positive(title):
+                                continue
+                            state = extract_state_from_text(title)
+                            results.append({
+                                'title': title,
+                                'source': 'grants_gov',
+                                'source_url': href or 'https://www.grants.gov',
+                                'state': state,
+                                'published_date': '',
+                                'description': f'Found via Grants.gov search for: {keyword}',
+                                'relevance_score': 0.65,
+                            })
+                    logger.info(f"Grants.gov HTML: found {len(listings)} items for '{keyword}'")
+                    time.sleep(2)
+                    continue
+                else:
+                    errors.append(f'{keyword}: HTTP {resp.status_code}')
+                    continue
+
+            # Parse JSON response
+            try:
+                data = resp.json()
+            except Exception:
+                # Maybe XML response
                 try:
-                    search_url = f'https://www.grants.gov/search-grants?cfda=&closing=&department=&keyword={requests.utils.quote(keyword)}&oppNum=&oppStatuses=forecasted|posted&sortBy=openDate|desc'
-                    page_resp = requests.get(search_url, headers={'User-Agent': headers['User-Agent']}, timeout=15)
-                    if page_resp.status_code == 200 and 'opportunity' in page_resp.text.lower():
-                        logger.info(f"Grants.gov page accessible for '{keyword}', but structured parsing needed")
-                except Exception:
-                    pass
+                    import xml.etree.ElementTree as ET
+                    root = ET.fromstring(resp.content)
+                    items = root.findall('.//' + '{http://apply.grants.gov/system/OpportunityDetail-V1.0}OpportunityDetail') or root.findall('.//OpportunityDetail') or root.findall('.//opportunity')
+                    logger.info(f"Grants.gov XML: {len(items)} items for '{keyword}'")
+                    for item in items[:10]:
+                        title_el = item.find('.//OpportunityTitle') or item.find('.//title')
+                        number_el = item.find('.//OpportunityNumber') or item.find('.//number')
+                        agency_el = item.find('.//AgencyName') or item.find('.//agency')
+                        title = title_el.text if title_el is not None else ''
+                        opp_num = number_el.text if number_el is not None else ''
+                        agency = agency_el.text if agency_el is not None else ''
+                        if title and not is_false_positive(title):
+                            results.append({
+                                'title': title,
+                                'source': 'grants_gov',
+                                'source_url': f'https://www.grants.gov/search-results-detail/{opp_num}' if opp_num else 'https://www.grants.gov',
+                                'state': extract_state_from_text(f'{title} {agency}'),
+                                'published_date': '',
+                                'description': f'Agency: {agency}',
+                                'relevance_score': 0.7,
+                            })
+                except Exception as xml_err:
+                    errors.append(f'{keyword}: parse error: {str(xml_err)[:100]}')
+                    continue
+                time.sleep(2)
                 continue
 
-            data = resp.json()
-
-            # Handle different response structures
+            # Handle JSON response structures
             opps = []
-            if 'oppHits' in data:
-                opps = data.get('oppHits', [])
-            elif 'opportunities' in data:
-                opps = data.get('opportunities', [])
-            elif 'response' in data:
-                opps = data.get('response', {}).get('body', {}).get('oppHits', [])
+            if isinstance(data, dict):
+                opps = data.get('oppHits', data.get('opportunities', data.get('results', [])))
+                if not opps and 'response' in data:
+                    opps = data.get('response', {}).get('body', {}).get('oppHits', [])
 
-            logger.info(f"Grants.gov: {len(opps)} results for '{keyword}'")
+            logger.info(f"Grants.gov JSON: {len(opps)} results for '{keyword}'")
 
-            for opp in opps[:15]:
+            for opp in opps[:10]:
                 title = opp.get('title', opp.get('oppTitle', ''))
                 opp_number = opp.get('number', opp.get('oppNumber', opp.get('id', '')))
                 agency = opp.get('agency', opp.get('agencyName', ''))
                 close_date = opp.get('closeDate', opp.get('closingDate', ''))
                 open_date = opp.get('openDate', opp.get('openingDate', ''))
-                description = opp.get('description', opp.get('synopsis', ''))
+                desc = opp.get('description', opp.get('synopsis', ''))
 
-                if not title:
-                    continue
-
-                if is_false_positive(title):
+                if not title or is_false_positive(title):
                     continue
 
                 opp_url = f'https://www.grants.gov/search-results-detail/{opp_number}' if opp_number else 'https://www.grants.gov'
-
-                state = extract_state_from_text(f"{title} {description} {agency}")
-
                 results.append({
                     'title': title,
                     'source': 'grants_gov',
                     'source_url': opp_url,
-                    'state': state,
+                    'state': extract_state_from_text(f'{title} {desc} {agency}'),
                     'published_date': open_date,
-                    'description': f"Agency: {agency}. Closes: {close_date}. {description[:200] if description else ''}",
+                    'description': f'Agency: {agency}. Closes: {close_date}. {desc[:200] if desc else ""}',
                     'relevance_score': 0.7,
                     'opportunity_number': opp_number,
                 })
@@ -613,12 +636,16 @@ def search_grants_gov(keywords=None):
             time.sleep(2)
 
         except Exception as e:
+            errors.append(f'{keyword}: {str(e)[:100]}')
             logger.error(f"Grants.gov error for '{keyword}': {str(e)}")
             continue
 
+    detail = f'Found {len(results)} grant opportunities'
+    if errors:
+        detail += f'. Errors: {"; ".join(errors[:5])}'
     _last_diagnostics['grants_gov'] = {
-        'status': 'success' if results else 'no_results',
-        'detail': f'Found {len(results)} grant opportunities'
+        'status': 'success' if results else ('error' if errors else 'no_results'),
+        'detail': detail
     }
     logger.info(f"Grants.gov total: {len(results)} results")
     return results
