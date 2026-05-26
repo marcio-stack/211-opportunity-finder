@@ -19,6 +19,8 @@ _last_diagnostics = {
     'sam_gov': {'status': 'not_run', 'detail': ''},
     'google_news': {'status': 'not_run', 'detail': ''},
     'grants_gov': {'status': 'not_run', 'detail': ''},
+    'fpds': {'status': 'not_run', 'detail': ''},
+    'usaspending': {'status': 'not_run', 'detail': ''},
 }
 
 
@@ -515,6 +517,215 @@ def extract_state_from_text(text):
     return ''
 
 
+def search_fpds(keywords=None):
+    """Search FPDS (Federal Procurement Data System) Atom feed for contract awards.
+
+    FPDS shows awarded contracts — useful for recompete intelligence.
+    Free, no API key required.
+    """
+    global _last_diagnostics
+    results = []
+    errors = []
+    raw_count = 0
+
+    # FPDS search terms: NAICS codes + keywords relevant to 211 and BPO
+    fpds_queries = [
+        ('NAICS:561422', 'bpo'),           # Telemarketing/Contact Centers
+        ('NAICS:561421', 'bpo'),           # Telephone Answering Services
+        ('NAICS:624190', '211'),           # Other Individual/Family Services
+        ('call center services', 'bpo'),
+        ('211 information referral', '211'),
+        ('crisis hotline', '211'),
+    ]
+
+    for query, q_category in fpds_queries:
+        try:
+            # FPDS Atom feed — search last 180 days for active/recently awarded
+            base_url = "https://www.fpds.gov/ezsearch/LATEST"
+            params = {
+                'q': query,
+                's': 0,
+                'num': 10,
+            }
+            logger.info(f"FPDS searching [{q_category}]: '{query}'")
+            resp = requests.get(base_url, params=params, timeout=30,
+                                headers={'User-Agent': 'Mozilla/5.0 (compatible; OpportunityRadar/2.0)',
+                                         'Accept': 'application/atom+xml, application/xml, text/xml'})
+
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.content, 'lxml-xml')
+                entries = soup.find_all('entry')
+                raw_count += len(entries)
+
+                for entry in entries[:5]:
+                    title_el = entry.find('title')
+                    link_el = entry.find('link')
+                    summary_el = entry.find('summary') or entry.find('content')
+
+                    if title_el:
+                        title_text = title_el.get_text().strip()
+
+                        if is_false_positive(title_text):
+                            continue
+
+                        desc_text = summary_el.get_text().strip() if summary_el else ''
+                        link_href = link_el.get('href', '') if link_el else ''
+                        category = classify_category(title_text, desc_text, query.lower())
+
+                        results.append({
+                            'title': f"[FPDS Award] {title_text}",
+                            'source': 'FPDS',
+                            'source_url': link_href,
+                            'state': extract_state_from_text(title_text + ' ' + desc_text),
+                            'category': category,
+                            'opportunity_type': 'contract_award',
+                            'description': desc_text[:2000],
+                            'deadline': '',
+                            'contact_info': '',
+                            'discovered_at': datetime.utcnow(),
+                        })
+            else:
+                errors.append(f"'{query[:30]}': HTTP {resp.status_code}")
+
+            time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"FPDS error for '{query}': {e}")
+            errors.append(f"'{query[:30]}': {str(e)[:100]}")
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for r in results:
+        if r['title'] not in seen:
+            seen.add(r['title'])
+            unique.append(r)
+
+    _last_diagnostics['fpds'] = {
+        'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
+        'detail': f"Searched {len(fpds_queries)} queries, {raw_count} raw, {len(unique)} unique",
+    }
+
+    logger.info(f"FPDS total: {raw_count} raw, {len(unique)} unique")
+    return unique
+
+
+def search_usaspending(keywords=None):
+    """Search USASpending.gov API for contract awards in 211/BPO space.
+
+    Shows who holds current contracts — recompete intelligence.
+    Free, no API key required.
+    """
+    global _last_diagnostics
+    results = []
+    errors = []
+    raw_count = 0
+
+    # PSC codes and NAICS codes relevant to our services
+    searches = [
+        # By NAICS code
+        {'naics': '561422', 'label': 'Contact Centers (NAICS 561422)', 'cat': 'bpo'},
+        {'naics': '561421', 'label': 'Telephone Answering (NAICS 561421)', 'cat': 'bpo'},
+        {'naics': '624190', 'label': 'Family Services (NAICS 624190)', 'cat': '211'},
+        # By keyword
+        {'keyword': 'call center services', 'cat': 'bpo'},
+        {'keyword': '211 information referral', 'cat': '211'},
+    ]
+
+    six_months_ago = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    for search in searches:
+        try:
+            url = "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+            payload = {
+                'filters': {
+                    'time_period': [{'start_date': six_months_ago, 'end_date': today}],
+                    'award_type_codes': ['A', 'B', 'C', 'D'],  # Contracts only
+                },
+                'fields': [
+                    'Award ID', 'Recipient Name', 'Award Amount',
+                    'Description', 'Start Date', 'End Date',
+                    'Awarding Agency', 'Place of Performance State Code',
+                ],
+                'limit': 10,
+                'page': 1,
+                'sort': 'Award Amount',
+                'order': 'desc',
+            }
+
+            if 'naics' in search:
+                payload['filters']['naics_codes'] = {'require': [search['naics']]}
+                label = search['label']
+            else:
+                payload['filters']['keywords'] = [search['keyword']]
+                label = search['keyword']
+
+            logger.info(f"USASpending searching [{search['cat']}]: '{label}'")
+            resp = requests.post(url, json=payload, timeout=30,
+                                 headers={'Content-Type': 'application/json',
+                                          'User-Agent': 'Mozilla/5.0 (compatible; OpportunityRadar/2.0)'})
+
+            if resp.status_code == 200:
+                data = resp.json()
+                awards = data.get('results', [])
+                raw_count += len(awards)
+
+                for award in awards:
+                    title = award.get('Description', '') or award.get('Recipient Name', '')
+                    if not title:
+                        continue
+
+                    if is_false_positive(title):
+                        continue
+
+                    recipient = award.get('Recipient Name', '')
+                    amount = award.get('Award Amount', 0)
+                    agency = award.get('Awarding Agency', '')
+                    end_date = award.get('End Date', '')
+                    state = award.get('Place of Performance State Code', '')
+
+                    desc = f"Awarded to {recipient}. Amount: ${amount:,.0f}. Agency: {agency}. Ends: {end_date}."
+                    category = classify_category(title, desc, label.lower())
+
+                    results.append({
+                        'title': f"[USASpending] {title[:200]}",
+                        'source': 'USASpending',
+                        'source_url': f"https://www.usaspending.gov/search/?hash=&keyword={requests.utils.quote(label)}",
+                        'state': state,
+                        'category': category,
+                        'opportunity_type': 'contract_award',
+                        'description': desc[:2000],
+                        'deadline': end_date,
+                        'contact_info': agency,
+                        'discovered_at': datetime.utcnow(),
+                    })
+            else:
+                errors.append(f"'{label[:30]}': HTTP {resp.status_code}")
+
+            time.sleep(1)
+
+        except Exception as e:
+            logger.error(f"USASpending error for '{label}': {e}")
+            errors.append(f"'{label[:30]}': {str(e)[:100]}")
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for r in results:
+        if r['title'] not in seen:
+            seen.add(r['title'])
+            unique.append(r)
+
+    _last_diagnostics['usaspending'] = {
+        'status': 'error' if errors and not unique else 'ok' if unique else 'empty',
+        'detail': f"Searched {len(searches)} queries, {raw_count} raw, {len(unique)} unique",
+    }
+
+    logger.info(f"USASpending total: {raw_count} raw, {len(unique)} unique")
+    return unique
+
+
 def run_all_scrapers(sam_api_key=''):
     """Run all scrapers and return combined results."""
     all_results = []
@@ -538,6 +749,16 @@ def run_all_scrapers(sam_api_key=''):
     grants_results = search_grants_gov()
     all_results.extend(grants_results)
     logger.info(f"Grants.gov: {len(grants_results)} opportunities")
+
+    logger.info("Running FPDS scraper...")
+    fpds_results = search_fpds()
+    all_results.extend(fpds_results)
+    logger.info(f"FPDS: {len(fpds_results)} opportunities")
+
+    logger.info("Running USASpending scraper...")
+    usa_results = search_usaspending()
+    all_results.extend(usa_results)
+    logger.info(f"USASpending: {len(usa_results)} opportunities")
 
     # Count by category
     cat_211 = sum(1 for r in all_results if r.get('category') == '211')
