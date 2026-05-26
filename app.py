@@ -1,4 +1,5 @@
 import logging
+import threading
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_apscheduler import APScheduler
@@ -234,9 +235,10 @@ def manual_search():
 
 @app.route('/api/scan', methods=['POST'])
 def trigger_scan():
-    """Manually trigger a full scan."""
-    run_scheduled_scan()
-    return jsonify({'success': True, 'message': 'Scan completed'})
+    """Manually trigger a full scan (runs in background)."""
+    t = threading.Thread(target=run_scheduled_scan, daemon=True)
+    t.start()
+    return jsonify({'success': True, 'message': 'Scan started in background'})
 
 
 @app.route('/api/test-sam')
@@ -274,14 +276,27 @@ with app.app_context():
         logger.info(f"Seeded {count} organizations")
 
 scheduler.init_app(app)
+
+
+def _delayed_first_scan():
+    """Run the first scan in a background thread so the web server starts immediately."""
+    import time
+    time.sleep(10)  # Let the web server start first
+    logger.info("Starting delayed first scan in background thread...")
+    run_scheduled_scan()
+
+
 scheduler.add_job(
     id='daily_scan',
     func=run_scheduled_scan,
     trigger='interval',
     hours=12,
-    next_run_time=datetime.utcnow(),
 )
 scheduler.start()
+
+# Run first scan in a background thread (non-blocking)
+_first_scan_thread = threading.Thread(target=_delayed_first_scan, daemon=True)
+_first_scan_thread.start()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
