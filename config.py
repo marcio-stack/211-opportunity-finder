@@ -15,33 +15,18 @@ class Config:
 # SEARCH TERMS — organized by category (211 vs BPO)
 # ============================================================
 
-# 211-specific SAM.gov search terms
+# 211-specific SAM.gov search terms (kept tight to avoid rate limits)
 SEARCH_TERMS_SAM_211 = [
-    '211',
     '211 services',
     'information and referral',
     'crisis hotline',
-    'helpline services',
-    'community resource hotline',
-    '2-1-1',
-    'United Way call center',
 ]
 
-# BPO / Contact Center SAM.gov search terms
+# BPO / Contact Center SAM.gov search terms (consolidated — SAM allows only ~10 req/min)
 SEARCH_TERMS_SAM_BPO = [
     'call center services',
-    'contact center services',
-    'BPO services',
-    'customer service center',
-    'call center staffing',
-    'overflow call center',
     'contact center outsourcing',
-    'managed contact center',
-    'inbound call center',
-    'customer care services',
-    'call center operations',
-    'telephone answering services',
-    'omnichannel contact center',
+    'BPO services',
 ]
 
 # Combined for backward compat
@@ -50,15 +35,12 @@ SEARCH_TERMS_SAM = SEARCH_TERMS_SAM_211 + SEARCH_TERMS_SAM_BPO
 # Grants.gov search terms (211 + BPO)
 SEARCH_TERMS_GRANTS_211 = [
     'information and referral services',
-    'crisis hotline services',
-    'community helpline operations',
-    '211 contact center technology',
+    '211 contact center',
 ]
 
 SEARCH_TERMS_GRANTS_BPO = [
-    'call center services federal',
-    'contact center modernization',
-    'customer service operations',
+    'call center services',
+    'contact center outsourcing',
 ]
 
 SEARCH_TERMS_GRANTS = SEARCH_TERMS_GRANTS_211 + SEARCH_TERMS_GRANTS_BPO
@@ -66,27 +48,15 @@ SEARCH_TERMS_GRANTS = SEARCH_TERMS_GRANTS_211 + SEARCH_TERMS_GRANTS_BPO
 # Google News search terms
 SEARCH_TERMS_NEWS_211 = [
     '"211" RFP call center',
-    '"211 services" contract vendor',
-    '"211" procurement "call center"',
-    '"211" "request for proposal"',
-    '"211" call center transition new vendor',
-    '"211 hotline" funding expansion',
-    '"211 services" complaints "wait time"',
-    '"211" "contract awarded" services',
-    '"information and referral" RFP procurement',
-    '"211" community services expansion',
-    '"United Way" "211" technology',
+    '"211 services" contract OR vendor OR procurement',
+    '"211 hotline" OR "211 helpline" funding',
+    '"information and referral" RFP OR procurement',
 ]
 
 SEARCH_TERMS_NEWS_BPO = [
-    '"BPO" "call center" RFP government',
-    '"contact center" outsourcing RFP',
-    '"contact center" "request for proposal"',
-    '"call center" vendor transition government',
-    '"managed services" "contact center" government',
-    '"BPO" "contract awarded" "call center"',
-    '"contact center" modernization government',
-    '"customer service" outsourcing government RFP',
+    '"call center" OR "contact center" RFP government',
+    '"BPO" OR "outsourcing" "call center" contract',
+    '"contact center" modernization OR transition government',
 ]
 
 SEARCH_TERMS_NEWS = SEARCH_TERMS_NEWS_211 + SEARCH_TERMS_NEWS_BPO
