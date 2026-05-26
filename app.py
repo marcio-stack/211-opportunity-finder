@@ -281,7 +281,7 @@ scheduler.init_app(app)
 def _delayed_first_scan():
     """Run the first scan in a background thread so the web server starts immediately."""
     import time
-    time.sleep(10)  # Let the web server start first
+    time.sleep(30)  # Let the web server start AND give SAM.gov API cooldown time
     logger.info("Starting delayed first scan in background thread...")
     run_scheduled_scan()
 
