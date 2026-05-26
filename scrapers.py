@@ -260,15 +260,15 @@ def search_sam_gov(api_key, keywords=None):
                     })
 
             elif resp.status_code == 429:
-                logger.warning(f"SAM.gov rate limited on '{term}' - waiting 5s")
+                logger.warning(f"SAM.gov rate limited on '{term}' - waiting 10s then continuing")
                 errors.append(f"'{term}': Rate limited (429)")
-                time.sleep(5)
+                time.sleep(10)
             else:
                 logger.error(f"SAM.gov error for '{term}': HTTP {resp.status_code}")
                 errors.append(f"'{term}': HTTP {resp.status_code}")
 
-            # Rate limiting: pause between requests
-            time.sleep(1.5)
+            # Rate limiting: pause between requests (SAM allows ~10/min)
+            time.sleep(3)
 
         except Exception as e:
             logger.error(f"SAM.gov search error for '{term}': {e}")
