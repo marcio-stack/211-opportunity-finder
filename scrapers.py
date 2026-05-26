@@ -214,73 +214,89 @@ def search_sam_gov(api_key, keywords=None):
     # Search both 211 and BPO terms, tagging each with its category source
     all_terms = [(t, '211') for t in SEARCH_TERMS_SAM_211] + [(t, 'bpo') for t in SEARCH_TERMS_SAM_BPO]
 
-    for term, term_category in all_terms:
-        try:
-            url = "https://api.sam.gov/prod/opportunities/v2/search"
-            posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
-            posted_to = datetime.now().strftime('%m/%d/%Y')
-            params = {
-                'api_key': api_key,
-                'keyword': term,  # Use keyword instead of title for broader results
-                'postedFrom': posted_from,
-                'postedTo': posted_to,
-                'limit': 25,
-                'offset': 0,
-            }
-            logger.info(f"SAM.gov searching [{term_category}]: keyword='{term}'")
-            resp = requests.get(url, params=params, timeout=30, headers=sam_headers)
-            logger.info(f"SAM.gov '{term}': status={resp.status_code}")
+    url = "https://api.sam.gov/prod/opportunities/v2/search"
+    posted_from = (datetime.now() - timedelta(days=90)).strftime('%m/%d/%Y')
+    posted_to = datetime.now().strftime('%m/%d/%Y')
+    consecutive_429s = 0  # Track consecutive rate limits
 
-            if resp.status_code == 200:
-                data = resp.json()
-                opps = data.get('opportunitiesData', [])
-                raw_count += len(opps)
+    for idx, (term, term_category) in enumerate(all_terms):
+        # Adaptive delay: if we've been rate-limited, back off exponentially
+        if consecutive_429s > 0:
+            backoff = min(15 * (2 ** (consecutive_429s - 1)), 120)  # 15s, 30s, 60s, 120s max
+            logger.info(f"SAM.gov backoff: waiting {backoff}s (consecutive 429s: {consecutive_429s})")
+            time.sleep(backoff)
 
-                for opp in opps:
-                    title = opp.get('title', '')
-                    desc = opp.get('description', '') or ''
-                    desc = desc[:2000]
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                params = {
+                    'api_key': api_key,
+                    'keyword': term,
+                    'postedFrom': posted_from,
+                    'postedTo': posted_to,
+                    'limit': 25,
+                    'offset': 0,
+                }
+                logger.info(f"SAM.gov searching [{term_category}]: keyword='{term}' (attempt {attempt + 1})")
+                resp = requests.get(url, params=params, timeout=30, headers=sam_headers)
+                logger.info(f"SAM.gov '{term}': status={resp.status_code}")
 
-                    if is_false_positive(title):
-                        continue
+                if resp.status_code == 200:
+                    consecutive_429s = 0  # Reset on success
+                    data = resp.json()
+                    opps = data.get('opportunitiesData', [])
+                    raw_count += len(opps)
 
-                    category = classify_category(title, desc, term.lower())
+                    for opp in opps:
+                        title = opp.get('title', '')
+                        desc = opp.get('description', '') or ''
+                        desc = desc[:2000]
 
-                    results.append({
-                        'title': title,
-                        'source': 'SAM.gov',
-                        'source_url': f"https://sam.gov/opp/{opp.get('noticeId', '')}/view",
-                        'state': opp.get('placeOfPerformance', {}).get('state', {}).get('code', '') if isinstance(opp.get('placeOfPerformance'), dict) else '',
-                        'category': category,
-                        'opportunity_type': classify_lead_type(title, desc, 'SAM.gov'),
-                        'description': desc,
-                        'deadline': opp.get('responseDeadLine', ''),
-                        'contact_info': json.dumps(opp.get('pointOfContact', [])),
-                        'discovered_at': datetime.utcnow(),
-                    })
+                        if is_false_positive(title):
+                            continue
 
-            elif resp.status_code == 429:
-                logger.warning(f"SAM.gov rate limited on '{term}' - waiting 10s then continuing")
-                errors.append(f"'{term}': Rate limited (429)")
-                time.sleep(10)
-            else:
-                logger.error(f"SAM.gov error for '{term}': HTTP {resp.status_code}")
-                errors.append(f"'{term}': HTTP {resp.status_code}")
+                        category = classify_category(title, desc, term.lower())
 
-            # Rate limiting: pause between requests (SAM allows ~10/min)
-            time.sleep(3)
+                        results.append({
+                            'title': title,
+                            'source': 'SAM.gov',
+                            'source_url': f"https://sam.gov/opp/{opp.get('noticeId', '')}/view",
+                            'state': opp.get('placeOfPerformance', {}).get('state', {}).get('code', '') if isinstance(opp.get('placeOfPerformance'), dict) else '',
+                            'category': category,
+                            'opportunity_type': classify_lead_type(title, desc, 'SAM.gov'),
+                            'description': desc,
+                            'deadline': opp.get('responseDeadLine', ''),
+                            'contact_info': json.dumps(opp.get('pointOfContact', [])),
+                            'discovered_at': datetime.utcnow(),
+                        })
+                    break  # Success — move to next term
 
-        except Exception as e:
-            logger.error(f"SAM.gov search error for '{term}': {e}")
-            errors.append(f"'{term}': {str(e)[:100]}")
+                elif resp.status_code == 429:
+                    consecutive_429s += 1
+                    retry_wait = min(15 * (2 ** consecutive_429s), 120)
+                    logger.warning(f"SAM.gov rate limited on '{term}' (attempt {attempt + 1}) — waiting {retry_wait}s before retry")
+                    errors.append(f"'{term}': Rate limited (429) attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        time.sleep(retry_wait)
+                    else:
+                        logger.warning(f"SAM.gov giving up on '{term}' after {max_retries} attempts")
+                else:
+                    logger.error(f"SAM.gov error for '{term}': HTTP {resp.status_code}")
+                    errors.append(f"'{term}': HTTP {resp.status_code}")
+                    break  # Non-retryable error
+
+            except Exception as e:
+                logger.error(f"SAM.gov search error for '{term}': {e}")
+                errors.append(f"'{term}': {str(e)[:100]}")
+                break  # Network error — move on
+
+        # Base delay between terms (6s to stay well under ~10 req/min)
+        if idx < len(all_terms) - 1:
+            time.sleep(6)
 
     # Deduplicate by title
     seen = set()
     unique = []
-    for r in results:
-        if r['title'] not in seen:
-            seen.add(r['title'])
-            unique.append(r)
     for r in results:
         if r['title'] not in seen:
             seen.add(r['title'])
