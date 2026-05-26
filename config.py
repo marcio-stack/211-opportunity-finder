@@ -9,30 +9,62 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
     SAM_API_KEY = os.environ.get('SAM_API_KEY', '')
-    NDP_API_KEY = os.environ.get('NDP_API_KEY', '')
     SCHEDULER_API_ENABLED = True
 
-# ── 211-specific SAM.gov title search terms ──
-SEARCH_TERMS_SAM = [
+# ============================================================
+# SEARCH TERMS — organized by category (211 vs BPO)
+# ============================================================
+
+# 211-specific SAM.gov search terms
+SEARCH_TERMS_SAM_211 = [
+    '211',
     '211 services',
-    '211 call center',
-    '211 hotline',
-    '211 contact center',
-    '2-1-1 services',
-    'information and referral services',
-    'crisis hotline services',
-    'community helpline',
-    'human services hotline',
+    'information and referral',
+    'crisis hotline',
+    'helpline services',
+    'community resource hotline',
+    '2-1-1',
+    'United Way call center',
 ]
 
-SEARCH_TERMS_GRANTS = [
+# BPO / Contact Center SAM.gov search terms
+SEARCH_TERMS_SAM_BPO = [
+    'call center services',
+    'contact center services',
+    'BPO services',
+    'customer service center',
+    'call center staffing',
+    'overflow call center',
+    'contact center outsourcing',
+    'managed contact center',
+    'inbound call center',
+    'customer care services',
+    'call center operations',
+    'telephone answering services',
+    'omnichannel contact center',
+]
+
+# Combined for backward compat
+SEARCH_TERMS_SAM = SEARCH_TERMS_SAM_211 + SEARCH_TERMS_SAM_BPO
+
+# Grants.gov search terms (211 + BPO)
+SEARCH_TERMS_GRANTS_211 = [
     'information and referral services',
     'crisis hotline services',
     'community helpline operations',
     '211 contact center technology',
 ]
 
-SEARCH_TERMS_NEWS = [
+SEARCH_TERMS_GRANTS_BPO = [
+    'call center services federal',
+    'contact center modernization',
+    'customer service operations',
+]
+
+SEARCH_TERMS_GRANTS = SEARCH_TERMS_GRANTS_211 + SEARCH_TERMS_GRANTS_BPO
+
+# Google News search terms
+SEARCH_TERMS_NEWS_211 = [
     '"211" RFP call center',
     '"211 services" contract vendor',
     '"211" procurement "call center"',
@@ -42,174 +74,56 @@ SEARCH_TERMS_NEWS = [
     '"211 services" complaints "wait time"',
     '"211" "contract awarded" services',
     '"information and referral" RFP procurement',
+    '"211" community services expansion',
+    '"United Way" "211" technology',
 ]
 
-# ── Known 211 organizations (from 211 Master Database) ──
-# Used to cross-reference SAM.gov results against actual 211 operators
-ORGANIZATIONS_211 = [
-    'United Way of Central Alabama',
-    '211 Connects Alabama',
-    'River Region United Way',
-    'United Way of Northwest Alabama',
-    'Hands On River Region',
-    'United Way of Anchorage',
-    'Alaska 211',
-    'Community Information & Referral',
-    'Arizona 211',
-    'United Way of Arkansas',
-    'Arkansas 211',
-    '211 LA County',
-    '211 San Diego',
-    '211 Orange County',
-    'Inland SoCal 211',
-    '211 NorCal',
-    '211 Sacramento',
-    '211 Connecting Point',
-    '211 Ventura County',
-    '211 Bay Area',
-    '211 Monterey Bay',
-    'Mile High United Way',
-    'Colorado 211',
-    '211 Connecticut',
-    'United Way of Connecticut',
-    'United Way of Delaware',
-    'Delaware 211',
-    '211 Florida',
-    'FLAIRS',
-    '211 Broward',
-    '211 Tampa Bay Cares',
-    'Heart of Florida United Way',
-    'United Way of Greater Atlanta',
-    'Aloha United Way',
-    'Idaho CareLine',
-    'Idaho 211',
-    '211 Illinois',
-    'United Way of Metro Chicago',
-    'Indiana 211',
-    'United Way of Central Iowa',
-    'Iowa 211',
-    'United Way of South Central Kansas',
-    '211 Kansas',
-    'Metro United Way Louisville',
-    'United Way of Bowling Green',
-    'United Way of Southeast Louisiana',
-    'Louisiana 211',
-    'The Opportunity Alliance',
-    '211 Maine',
-    '211 Maryland',
-    'United Way of Massachusetts Bay',
-    'Mass 211',
-    'United Way for Southeastern Michigan',
-    'Michigan 211',
-    '211 Northeast Michigan',
-    'Greater Twin Cities United Way',
-    'Mississippi 211',
-    'Missouri 211',
-    'Montana 211',
-    'United Way of the Midlands',
-    'Nebraska 211',
-    'Nevada 211',
-    '211 New Hampshire',
-    'NJ 211',
-    'United Way of New Jersey',
-    'United Way of Central New Mexico',
-    'New Mexico 211',
-    '211 New York State',
-    'United Way of Greater Rochester',
-    '211 WNY',
-    'NC 211',
-    'United Way of North Carolina',
-    'FirstLink',
-    'North Dakota 211',
-    'LSS 211 Central Ohio',
-    'United Way of Greater Cincinnati',
-    '211 Oklahoma',
-    'Heartline',
-    '211info',
-    'PA 211',
-    'United Way of Pennsylvania',
-    '211 Rhode Island',
-    'United Way of Rhode Island',
-    'United Way Association of SC',
-    'SC 211',
-    '211 Helpline Center',
-    'Tennessee 211',
-    '211 Texas',
-    'United Way of Tarrant County',
-    'United Way of San Antonio',
-    'United Way of Greater Houston',
-    'DETCOG 211',
-    'Texoma Council of Governments',
-    'United Way of Metropolitan Dallas',
-    'United Way of Salt Lake',
-    'Utah 211',
-    'Vermont 211',
-    '211 Virginia',
-    'Council of Community Services',
-    'Washington 211',
-    'WIN 211',
-    'West Virginia 211',
-    'Wisconsin 211',
-    'United Way of Laramie County',
-    'Wyoming 211',
-    'DC 211',
-    'United Way NCA',
+SEARCH_TERMS_NEWS_BPO = [
+    '"BPO" "call center" RFP government',
+    '"contact center" outsourcing RFP',
+    '"contact center" "request for proposal"',
+    '"call center" vendor transition government',
+    '"managed services" "contact center" government',
+    '"BPO" "contract awarded" "call center"',
+    '"contact center" modernization government',
+    '"customer service" outsourcing government RFP',
 ]
 
-# ── False positive keywords ──
+SEARCH_TERMS_NEWS = SEARCH_TERMS_NEWS_211 + SEARCH_TERMS_NEWS_BPO
+
+# Keywords that indicate FALSE POSITIVES (not about 211 or BPO services)
 NEGATIVE_TITLE_KEYWORDS = [
-    # Roads / infrastructure
     'highway', 'road', 'widening', 'paving', 'bridge', 'route 211',
     'sr 211', 'sr-211', 'state route', 'interstate',
-    # Military / defense
     'military', 'space command', 'missile', 'defense', 'navy', 'army',
-    'air force', 'devSecOps', 'weapons', 'ammunition',
-    # Construction / real estate
+    'air force', 'devsecops', 'weapons', 'ammunition',
     'construction', 'renovation', 'building', 'real estate',
-    # Guam false positive
     'guam', 'communications center on guam',
-    # Facilities / maintenance
     'janitorial', 'landscaping', 'food service', 'custodial',
     'sewer', 'water treatment', 'electrical grid',
-    # HVAC / mechanical / trades
-    'hvac', 'plumbing', 'heating', 'cooling', 'air conditioning',
-    'mechanical', 'electrical contractor', 'roofing', 'painting',
-    'carpentry', 'welding', 'boiler', 'furnace', 'ductwork',
-    # Medical / pharma / lab
-    'medical equipment', 'pharmaceutical', 'laboratory', 'surgical',
-    'radiology', 'dental', 'prosthetics', 'biomedical',
-    # IT / software / cyber
-    'IT services', 'software development', 'cybersecurity', 'cloud services',
-    'network infrastructure', 'data center', 'server',
-    # Telecom (non-211)
-    'telecommunications', 'fiber optic', 'broadband', 'cellular tower',
-    # Fleet / vehicles
-    'fleet', 'vehicle maintenance', 'automotive', 'tire', 'fuel',
-    # Waste / sanitation
-    'trash', 'waste management', 'recycling', 'hazardous waste', 'debris',
-    # Security (physical)
-    'security guard', 'patrol', 'surveillance', 'alarm system',
-    # Hardware / parts / supplies
-    'valve', 'pump', 'manifold', 'actuator', 'circuit card', 'power supply',
-    'brake', 'nut,', 'bolt', 'gasket', 'fitting', 'hose', 'cable',
-    'display unit', 'test set', 'extension cord', 'tuning unit',
-    # Weapons / ships / military equipment
-    'uss ', 'shooting range', 'ammunition', 'munitions',
-    # Other irrelevant
-    'uniforms', 'laundry', 'pest control', 'elevator', 'generator',
-    'fire suppression', 'sprinkler', 'asbestos', 'lead abatement',
 ]
 
-# ── True positive keywords ──
-POSITIVE_KEYWORDS = [
+# Keywords that indicate TRUE POSITIVES
+POSITIVE_KEYWORDS_211 = [
     '211 services', '211 call center', '211 hotline', '211 helpline',
     '211 contact center', '211 information', '211 referral',
     'information and referral', 'crisis hotline', 'crisis line',
     'community resource hotline', 'human services hotline',
-    'call center RFP', 'contact center RFP', 'BPO services RFP',
+    '2-1-1', 'united way 211',
+]
+
+POSITIVE_KEYWORDS_BPO = [
+    'bpo services', 'bpo rfp', 'bpo contract',
+    'call center rfp', 'contact center rfp',
+    'call center outsourcing', 'contact center outsourcing',
+    'managed contact center', 'customer service rfp',
     'overflow call center', 'surge staffing call center',
     'after-hours call center', 'after hours call center',
+    'inbound call center', 'omnichannel contact',
+    'telephone answering', 'customer care services',
 ]
+
+POSITIVE_KEYWORDS = POSITIVE_KEYWORDS_211 + POSITIVE_KEYWORDS_BPO
 
 MONITORED_STATES = [
     'TX', 'CA', 'NY', 'FL', 'PA', 'OH', 'OK', 'IL',
