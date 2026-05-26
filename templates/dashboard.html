@@ -3,31 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>211 Lead Finder | Frontline Group</title>
+    <title>Opportunity Radar | Concept Mkt</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f4f8; color: #1a2332; }
-        .header { background: linear-gradient(135deg, #0055a4 0%, #0088cc 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; color: #1a2332; }
+
+        .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
         .header h1 { font-size: 22px; font-weight: 600; }
-        .header h1 span { font-weight: 300; opacity: 0.8; }
+        .header h1 .radar-icon { display: inline-block; width: 28px; height: 28px; border: 2px solid #e94560; border-radius: 50%; position: relative; margin-right: 8px; vertical-align: middle; }
+        .header h1 .radar-icon::before { content: ''; position: absolute; top: 4px; left: 4px; width: 16px; height: 16px; border: 1.5px solid #e94560; border-radius: 50%; opacity: 0.5; }
+        .header h1 .radar-icon::after { content: ''; position: absolute; top: 10px; left: 10px; width: 4px; height: 4px; background: #e94560; border-radius: 50%; }
+        .header h1 span { font-weight: 300; opacity: 0.7; font-size: 16px; }
         .header-actions { display: flex; gap: 10px; align-items: center; }
         .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; }
-        .btn-primary { background: white; color: #0055a4; }
-        .btn-primary:hover { background: #e8f0fe; }
-        .btn-scan { background: rgba(255,255,255,0.15); color: white; border: 1px solid rgba(255,255,255,0.3); }
-        .btn-scan:hover { background: rgba(255,255,255,0.25); }
-        .btn-sm { padding: 4px 10px; font-size: 11px; }
-        .last-scan { font-size: 12px; opacity: 0.7; }
+        .btn-scan { background: #e94560; color: white; border: none; }
+        .btn-scan:hover { background: #c73e54; }
+        .btn-scan:disabled { opacity: 0.5; cursor: not-allowed; }
+        .last-scan { font-size: 12px; opacity: 0.6; }
 
-        .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; padding: 20px 30px; }
-        .stat-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-        .stat-card .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .stat-card .value { font-size: 28px; font-weight: 700; color: #0055a4; }
-        .stat-card .value.alert { color: #e63946; }
-        .stat-card .value.success { color: #2d9b51; }
+        .stats-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; padding: 20px 30px; }
+        .stat-card { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 3px solid #d1d5db; }
+        .stat-card .label { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+        .stat-card .value { font-size: 26px; font-weight: 700; color: #1a1a2e; }
+        .stat-card .sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
+        .stat-card.accent-red { border-left-color: #e94560; }
+        .stat-card.accent-red .value { color: #e94560; }
+        .stat-card.accent-green { border-left-color: #10b981; }
+        .stat-card.accent-green .value { color: #10b981; }
+        .stat-card.accent-blue { border-left-color: #3b82f6; }
+        .stat-card.accent-blue .value { color: #3b82f6; }
+        .stat-card.accent-purple { border-left-color: #8b5cf6; }
+        .stat-card.accent-purple .value { color: #8b5cf6; }
 
         .main-content { padding: 0 30px 30px; display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
-        .panel { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); overflow: hidden; }
+        .panel { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
         .panel-header { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
         .panel-header h2 { font-size: 15px; font-weight: 600; }
         .panel-body { padding: 0; max-height: 650px; overflow-y: auto; }
@@ -37,7 +46,7 @@
 
         .opp-item { padding: 14px 20px; border-bottom: 1px solid #f0f0f0; cursor: pointer; transition: background 0.15s; }
         .opp-item:hover { background: #f8fafc; }
-        .opp-item.selected { background: #e8f4fd; border-left: 3px solid #0055a4; }
+        .opp-item.selected { background: #eef2ff; border-left: 3px solid #1a1a2e; }
         .opp-row { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
         .opp-title { font-size: 13px; font-weight: 600; color: #1a2332; line-height: 1.4; flex: 1; margin-right: 10px; }
         .opp-score { min-width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: white; }
@@ -45,7 +54,7 @@
         .score-warm { background: #f59e0b; }
         .score-cool { background: #6b7280; }
         .score-cold { background: #d1d5db; color: #6b7280; }
-        .opp-meta { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .opp-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .opp-badge { padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; text-transform: uppercase; }
         .badge-rfp { background: #dc2626; color: white; }
         .badge-procurement { background: #ea580c; color: white; }
@@ -57,6 +66,11 @@
         .badge-expansion { background: #2563eb; color: white; }
         .badge-disaster_response { background: #991b1b; color: white; }
         .badge-market_signal { background: #e5e7eb; color: #374151; }
+        .badge-unknown { background: #e5e7eb; color: #374151; }
+        .cat-badge { padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 700; letter-spacing: 0.3px; }
+        .cat-211 { background: #dbeafe; color: #1d4ed8; }
+        .cat-bpo { background: #fce7f3; color: #be185d; }
+        .cat-both { background: #ede9fe; color: #6d28d9; }
         .opp-source { font-size: 11px; color: #9ca3af; }
         .opp-state { font-size: 11px; color: #6b7280; font-weight: 600; }
         .opp-deadline { font-size: 11px; color: #dc2626; font-weight: 500; }
@@ -66,8 +80,8 @@
         .detail-section { margin-bottom: 16px; }
         .detail-section h3 { font-size: 11px; text-transform: uppercase; color: #9ca3af; letter-spacing: 0.5px; margin-bottom: 6px; }
         .detail-section p { font-size: 13px; line-height: 1.6; color: #4b5563; }
-        .detail-link { color: #0055a4; text-decoration: none; font-size: 13px; }
-        .detail-link:hover { text-decoration: underline; }
+        .detail-link { color: #1a1a2e; text-decoration: none; font-size: 13px; font-weight: 500; }
+        .detail-link:hover { text-decoration: underline; color: #e94560; }
         .status-select { padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; width: 100%; margin-top: 4px; }
         .notes-textarea { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px; font-size: 12px; resize: vertical; min-height: 60px; font-family: inherit; }
         .empty-state { padding: 40px; text-align: center; color: #9ca3af; }
@@ -80,19 +94,19 @@
 
         .tab-bar { display: flex; border-bottom: 2px solid #e5e7eb; padding: 0 20px; }
         .tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
-        .tab.active { color: #0055a4; border-bottom-color: #0055a4; }
-        .tab:hover { color: #0055a4; }
+        .tab.active { color: #1a1a2e; border-bottom-color: #e94560; }
+        .tab:hover { color: #1a1a2e; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
         .org-item { padding: 10px 20px; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
         .org-name { font-size: 13px; font-weight: 500; }
         .org-details { font-size: 11px; color: #6b7280; }
-        .org-state { font-size: 12px; font-weight: 600; color: #0055a4; min-width: 30px; }
+        .org-state { font-size: 12px; font-weight: 600; color: #1a1a2e; min-width: 30px; }
         .accredited-badge { background: #d1fae5; color: #065f46; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-weight: 600; }
 
         .loading { text-align: center; padding: 40px; color: #9ca3af; }
-        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #e5e7eb; border-top-color: #0055a4; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid #e5e7eb; border-top-color: #e94560; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; vertical-align: middle; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .pipeline-hint { font-size: 11px; color: #9ca3af; padding: 8px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
@@ -106,42 +120,52 @@
 <body>
     <div class="header">
         <div>
-            <h1>211 Lead Finder <span>| Frontline Group</span></h1>
+            <h1><span class="radar-icon"></span>Opportunity Radar <span>| Concept Mkt</span></h1>
             <div class="last-scan" id="lastScan">Loading...</div>
         </div>
         <div class="header-actions">
-            <button class="btn btn-scan" onclick="triggerScan()">Scan for Leads</button>
+            <button class="btn btn-scan" onclick="triggerScan()">Scan Now</button>
         </div>
     </div>
 
     <div class="stats-bar">
         <div class="stat-card">
-            <div class="label">211 Organizations</div>
-            <div class="value" id="statOrgs">--</div>
-        </div>
-        <div class="stat-card">
-            <div class="label">Total Leads</div>
+            <div class="label">Total Opportunities</div>
             <div class="value" id="statTotal">--</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card accent-red">
             <div class="label">New (Unreviewed)</div>
-            <div class="value alert" id="statNew">--</div>
+            <div class="value" id="statNew">--</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card accent-green">
             <div class="label">Hot Leads (70+)</div>
-            <div class="value success" id="statHigh">--</div>
+            <div class="value" id="statHigh">--</div>
+        </div>
+        <div class="stat-card accent-blue">
+            <div class="label">211 Opportunities</div>
+            <div class="value" id="stat211">--</div>
+        </div>
+        <div class="stat-card accent-purple">
+            <div class="label">BPO Opportunities</div>
+            <div class="value" id="statBpo">--</div>
         </div>
     </div>
 
     <div class="main-content">
         <div class="panel">
             <div class="tab-bar">
-                <div class="tab active" data-tab="leads" onclick="switchTab('leads')">Leads Pipeline</div>
+                <div class="tab active" data-tab="leads" onclick="switchTab('leads')">Opportunity Pipeline</div>
                 <div class="tab" data-tab="organizations" onclick="switchTab('organizations')">211 Directory</div>
             </div>
 
             <div id="tab-leads" class="tab-content active">
                 <div class="filters">
+                    <select class="filter-select" id="filterCategory" onchange="loadOpportunities()">
+                        <option value="">All Categories</option>
+                        <option value="211">211 Only</option>
+                        <option value="bpo">BPO Only</option>
+                        <option value="both">211 + BPO</option>
+                    </select>
                     <select class="filter-select" id="filterStatus" onchange="loadOpportunities()">
                         <option value="">All Statuses</option>
                         <option value="new" selected>New</option>
@@ -175,9 +199,9 @@
                         <option value="30">Cool+ (30+)</option>
                     </select>
                 </div>
-                <div class="pipeline-hint">Leads are scored 1-100 based on relevance to Frontline's 211 services. Higher = stronger lead.</div>
+                <div class="pipeline-hint">Opportunities scored 1-100 on relevance to Frontline's 211 and BPO services. Higher = stronger fit.</div>
                 <div class="panel-body" id="oppList">
-                    <div class="loading"><span class="spinner"></span> Loading leads...</div>
+                    <div class="loading"><span class="spinner"></span> Loading opportunities...</div>
                 </div>
             </div>
 
@@ -200,11 +224,11 @@
         </div>
 
         <div class="panel detail-panel">
-            <div class="panel-header"><h2>Lead Details</h2></div>
+            <div class="panel-header"><h2>Opportunity Details</h2></div>
             <div class="panel-body" id="detailPanel">
                 <div class="empty-state">
-                    <p>Select a lead to view details</p>
-                    <p style="font-size:12px">Click any lead on the left to see analysis, recommended actions, and manage your pipeline</p>
+                    <p>Select an opportunity to view details</p>
+                    <p style="font-size:12px">Click any opportunity on the left to see analysis, recommended actions, and manage your pipeline</p>
                 </div>
             </div>
         </div>
@@ -226,7 +250,10 @@
             expansion: 'Expansion',
             disaster_response: 'Disaster',
             market_signal: 'Signal',
+            unknown: 'Unknown',
         };
+
+        const catLabels = { '211': '211', 'bpo': 'BPO', 'both': '211+BPO' };
 
         function init() {
             const selects = ['filterState', 'orgFilterState'];
@@ -246,10 +273,11 @@
             try {
                 const resp = await fetch('/api/stats');
                 const data = await resp.json();
-                document.getElementById('statOrgs').textContent = data.total_organizations;
                 document.getElementById('statTotal').textContent = data.total_opportunities;
                 document.getElementById('statNew').textContent = data.new_opportunities;
                 document.getElementById('statHigh').textContent = data.high_relevance;
+                document.getElementById('stat211').textContent = (data.category_211 || 0) + (data.category_both || 0);
+                document.getElementById('statBpo').textContent = (data.category_bpo || 0) + (data.category_both || 0);
                 if (data.last_scan) {
                     const d = new Date(data.last_scan);
                     document.getElementById('lastScan').textContent = 'Last scan: ' + d.toLocaleString() + ' (' + data.last_scan_results + ' results)';
@@ -260,12 +288,14 @@
         }
 
         async function loadOpportunities() {
+            const category = document.getElementById('filterCategory').value;
             const status = document.getElementById('filterStatus').value;
             const state = document.getElementById('filterState').value;
             const type = document.getElementById('filterType').value;
             const score = document.getElementById('filterScore').value;
 
             const params = new URLSearchParams();
+            if (category) params.set('category', category);
             if (status) params.set('status', status);
             if (state) params.set('state', state);
             if (type) params.set('type', type);
@@ -281,26 +311,29 @@
         function renderOpportunities() {
             const list = document.getElementById('oppList');
             if (currentOpps.length === 0) {
-                list.innerHTML = '<div class="empty-state"><p>No leads found</p><p style="font-size:12px">Try adjusting filters or run a new scan</p></div>';
+                list.innerHTML = '<div class="empty-state"><p>No opportunities found</p><p style="font-size:12px">Try adjusting filters or run a new scan</p></div>';
                 return;
             }
             list.innerHTML = currentOpps.map(o => {
                 const scoreClass = o.relevance_score >= 70 ? 'score-hot' : o.relevance_score >= 50 ? 'score-warm' : o.relevance_score >= 30 ? 'score-cool' : 'score-cold';
-                const typeLabel = typeLabels[o.opportunity_type] || o.opportunity_type;
-                return `
+                const typeLabel = typeLabels[o.opportunity_type] || o.opportunity_type || 'Unknown';
+                const cat = o.category || '211';
+                const catLabel = catLabels[cat] || cat;
+                return ``
                 <div class="opp-item ${selectedOpp && selectedOpp.id === o.id ? 'selected' : ''}" onclick="selectOpp(${o.id})">
                     <div class="opp-row">
                         <div class="opp-title">${escHtml(o.title)}</div>
                         <div class="opp-score ${scoreClass}">${o.relevance_score}</div>
                     </div>
                     <div class="opp-meta">
-                        <span class="opp-badge badge-${o.opportunity_type}">${typeLabel}</span>
+                        <span class="cat-badge cat-${cat}">${catLabel}</span>
+                        <span class="opp-badge badge-${o.opportunity_type || 'unknown'}">${typeLabel}</span>
                         ${o.state ? '<span class="opp-state">' + o.state + '</span>' : ''}
                         <span class="opp-source">${o.source}</span>
                         ${o.deadline ? '<span class="opp-deadline">Due: ' + o.deadline + '</span>' : ''}
                         <span class="opp-source">${timeAgo(o.discovered_at)}</span>
                     </div>
-                </div>`;
+                </div>``;
             }).join('');
         }
 
@@ -313,26 +346,29 @@
         function renderDetail() {
             const panel = document.getElementById('detailPanel');
             if (!selectedOpp) {
-                panel.innerHTML = '<div class="empty-state"><p>Select a lead to view details</p></div>';
+                panel.innerHTML = '<div class="empty-state"><p>Select an opportunity to view details</p></div>';
                 return;
             }
             const o = selectedOpp;
             const qualityClass = o.relevance_score >= 70 ? 'hot' : o.relevance_score >= 50 ? 'warm' : o.relevance_score >= 30 ? 'cool' : 'cold';
-            const qualityLabel = o.relevance_score >= 70 ? 'Hot Lead' : o.relevance_score >= 50 ? 'Warm Lead' : o.relevance_score >= 30 ? 'Cool Lead' : 'Cold Lead';
-            const typeLabel = typeLabels[o.opportunity_type] || o.opportunity_type;
+            const qualityLabel = o.relevance_score >= 70 ? 'Hot Lead' : o.relevance_score >= 50 ? 'Warm Lead' : o.relevance_score >= 30 ? 'Cool' : 'Low Priority';
+            const typeLabel = typeLabels[o.opportunity_type] || o.opportunity_type || 'Unknown';
+            const cat = o.category || '211';
+            const catLabel = catLabels[cat] || cat;
 
             panel.innerHTML = `
                 <span class="lead-quality quality-${qualityClass}">${qualityLabel} — ${o.relevance_score}/100</span>
                 <div class="detail-title">${escHtml(o.title)}</div>
                 <div style="margin-bottom:12px">
-                    <span class="opp-badge badge-${o.opportunity_type}" style="font-size:11px">${typeLabel}</span>
+                    <span class="cat-badge cat-${cat}" style="font-size:11px">${catLabel}</span>
+                    <span class="opp-badge badge-${o.opportunity_type || 'unknown'}" style="font-size:11px;margin-left:4px">${typeLabel}</span>
                     ${o.state ? '<span class="opp-state" style="margin-left:8px">' + o.state + '</span>' : ''}
                     <span class="opp-source" style="margin-left:8px">${o.source}</span>
                 </div>
                 ${o.source_url ? '<a href="' + escHtml(o.source_url) + '" target="_blank" class="detail-link">View original source &rarr;</a>' : ''}
                 <div class="detail-section" style="margin-top:12px">
-                    <h3>Lead Analysis</h3>
-                    <p>${escHtml(o.ai_analysis || 'No analysis available. Add your ANTHROPIC_API_KEY for AI-powered lead scoring.')}</p>
+                    <h3>AI Analysis</h3>
+                    <p>${escHtml(o.ai_analysis || 'No analysis available. Add your ANTHROPIC_API_KEY for AI-powered scoring.')}</p>
                 </div>
                 <div class="detail-section">
                     <h3>Description</h3>
@@ -357,7 +393,7 @@
                 </div>
                 <div class="detail-section">
                     <h3>Notes</h3>
-                    <textarea class="notes-textarea" onblur="updateOpp(${o.id}, 'notes', this.value)" placeholder="Add notes about this lead...">${escHtml(o.notes || '')}</textarea>
+                    <textarea class="notes-textarea" onblur="updateOpp(${o.id}, 'notes', this.value)" placeholder="Add notes about this opportunity...">${escHtml(o.notes || '')}</textarea>
                 </div>
             `;
         }
@@ -390,7 +426,7 @@
                     list.innerHTML = '<div class="empty-state"><p>No organizations found</p></div>';
                     return;
                 }
-                list.innerHTML = orgs.map(o => `
+                list.innerHTML = orgs.map(o => ``
                     <div class="org-item">
                         <div>
                             <div class="org-name">${escHtml(o.name)} ${o.accredited ? '<span class="accredited-badge">ACCREDITED</span>' : ''}</div>
@@ -399,14 +435,14 @@
                         </div>
                         <div class="org-state">${o.state}</div>
                     </div>
-                `).join('');
+                ``).join('');
             } catch (e) { console.error('Org load error:', e); }
         }
 
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+            document.querySelector(``[data-tab="${tab}"]``).classList.add('active');
             document.getElementById('tab-' + tab).classList.add('active');
             if (tab === 'organizations') loadOrganizations();
         }
@@ -420,7 +456,7 @@
                 await loadStats();
                 await loadOpportunities();
             } catch (e) { console.error('Scan error:', e); }
-            btn.textContent = 'Scan for Leads';
+            btn.textContent = 'Scan Now';
             btn.disabled = false;
         }
 
