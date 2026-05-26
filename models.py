@@ -31,6 +31,7 @@ class Opportunity(db.Model):
     source = db.Column(db.String(200))
     source_url = db.Column(db.String(500))
     state = db.Column(db.String(5))
+    category = db.Column(db.String(20), default='211')  # '211', 'bpo', or 'both'
     opportunity_type = db.Column(db.String(50))  # rfp, signal, contract_expiry, news
     description = db.Column(db.Text)
     deadline = db.Column(db.String(100))
